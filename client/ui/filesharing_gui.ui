@@ -1,0 +1,218 @@
+<?xml version='1.0' encoding='utf-8'?>
+<interface version="1.4" author="PygubuDesigner 0.39.3">
+  <project>
+    <settings />
+    <customwidgets />
+  </project>
+  <object class="tk.Tk" id="root" named="True">
+    <property name="geometry">1280x768</property>
+    <property name="height">1000</property>
+    <property name="resizable">both</property>
+    <property name="title" translatable="yes">Server Filesharing</property>
+    <property name="width">1000</property>
+    <child>
+      <object class="ttk.Frame" id="main_frame" named="True">
+        <property name="height">10</property>
+        <property name="width">10</property>
+        <layout manager="pack">
+          <property name="expand">true</property>
+          <property name="fill">both</property>
+          <property name="side">top</property>
+        </layout>
+        <child>
+          <object class="ttk.Frame" id="fr_file_list" named="True">
+            <property name="height">0</property>
+            <property name="padding">20</property>
+            <property name="width">0</property>
+            <layout manager="pack">
+              <property name="expand">true</property>
+              <property name="fill">both</property>
+              <property name="side">left</property>
+            </layout>
+            <child>
+              <object class="ttk.Button" id="bt_refresh" named="True">
+                <property name="command" type="command" cbtype="simple">refresh_filetree</property>
+                <property name="compound">top</property>
+                <property name="cursor">based_arrow_down</property>
+                <property name="default">active</property>
+                <property name="state">normal</property>
+                <property name="takefocus">false</property>
+                <property name="text" translatable="yes">refresh</property>
+                <property name="width">10</property>
+                <bind sequence="&lt;ButtonPress&gt;" handler="callback" add="" />
+                <layout manager="pack">
+                  <property name="anchor">nw</property>
+                  <property name="expand">false</property>
+                  <property name="ipadx">0</property>
+                  <property name="ipady">0</property>
+                  <property name="padx">0</property>
+                  <property name="pady">5</property>
+                  <property name="side">top</property>
+                </layout>
+              </object>
+            </child>
+            <child>
+              <object class="pygubu.builder.widgets.scrolledframe" id="sf_file_list" named="True">
+                <property name="borderwidth">5</property>
+                <property name="relief">raised</property>
+                <property name="scrolltype">both</property>
+                <property name="takefocus">true</property>
+                <property name="usemousewheel">true</property>
+                <layout manager="pack">
+                  <property name="anchor">center</property>
+                  <property name="expand">true</property>
+                  <property name="fill">both</property>
+                  <property name="pady">10</property>
+                  <property name="side">left</property>
+                </layout>
+                <child>
+                  <object class="ttk.Treeview" id="tv_filetree" named="True">
+                    <property name="height">10</property>
+                    <property name="selectmode">extended</property>
+                    <layout manager="pack">
+                      <property name="anchor">s</property>
+                      <property name="expand">true</property>
+                      <property name="fill">both</property>
+                      <property name="side">top</property>
+                    </layout>
+                    <child>
+                      <object class="ttk.Treeview.Column" id="filesize_column" named="True">
+                        <property name="column_anchor">w</property>
+                        <property name="heading_anchor">w</property>
+                        <property name="minwidth">10</property>
+                        <property name="stretch">true</property>
+                        <property name="text" translatable="yes">File Size</property>
+                        <property name="tree_column">false</property>
+                        <property name="visible">true</property>
+                        <property name="width">100</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="ttk.Treeview.Column" id="filename_column" named="True">
+                        <property name="column_anchor">w</property>
+                        <property name="heading_anchor">w</property>
+                        <property name="minwidth">20</property>
+                        <property name="stretch">true</property>
+                        <property name="text" translatable="yes">File Name</property>
+                        <property name="tree_column">true</property>
+                        <property name="visible">true</property>
+                        <property name="width">200</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Frame" id="button_frame" named="True">
+            <property name="height">200</property>
+            <property name="width">200</property>
+            <layout manager="pack">
+              <property name="anchor">ne</property>
+              <property name="expand">true</property>
+              <property name="fill">both</property>
+              <property name="ipadx">10</property>
+              <property name="ipady">10</property>
+              <property name="pady">10</property>
+              <property name="side">top</property>
+            </layout>
+            <containerlayout manager="grid">
+              <property name="anchor">ne</property>
+              <property name="propagate">false</property>
+            </containerlayout>
+            <child>
+              <object class="ttk.Button" id="bt_create_dir" named="True">
+                <property name="command" type="command" cbtype="simple">create_directory</property>
+                <property name="text" translatable="yes">create directory</property>
+                <layout manager="grid">
+                  <property name="column">0</property>
+                  <property name="pady">5</property>
+                  <property name="row">5</property>
+                </layout>
+              </object>
+            </child>
+            <child>
+              <object class="ttk.Button" id="bt_delete" named="True">
+                <property name="command" type="command" cbtype="simple">delete_file</property>
+                <property name="cursor">arrow</property>
+                <property name="state">normal</property>
+                <property name="text" translatable="yes">delete</property>
+                <property name="width">13</property>
+                <layout manager="grid">
+                  <property name="column">0</property>
+                  <property name="pady">5</property>
+                  <property name="row">3</property>
+                </layout>
+              </object>
+            </child>
+            <child>
+              <object class="ttk.Button" id="bt_download" named="True">
+                <property name="command" type="command" cbtype="simple">download_file</property>
+                <property name="text" translatable="yes">download</property>
+                <property name="width">13</property>
+                <layout manager="grid">
+                  <property name="column">0</property>
+                  <property name="pady">5</property>
+                  <property name="row">2</property>
+                </layout>
+              </object>
+            </child>
+            <child>
+              <object class="ttk.Button" id="bt_upload" named="True">
+                <property name="command" type="command" cbtype="simple">upload_file</property>
+                <property name="compound">left</property>
+                <property name="text" translatable="yes">upload</property>
+                <property name="width">13</property>
+                <layout manager="grid">
+                  <property name="column">0</property>
+                  <property name="pady">5</property>
+                  <property name="row">1</property>
+                </layout>
+              </object>
+            </child>
+            <child>
+              <object class="tk.Message" id="message1">
+                <property name="font">TkTextFont</property>
+                <property name="relief">flat</property>
+                <property name="text" translatable="yes">No server connected</property>
+                <property name="textvariable">string:connection_status</property>
+                <property name="width">200</property>
+                <layout manager="grid">
+                  <property name="column">0</property>
+                  <property name="pady">5</property>
+                  <property name="row">0</property>
+                </layout>
+              </object>
+            </child>
+            <child>
+              <object class="ttk.Button" id="bt_connect" named="True">
+                <property name="command" type="command" cbtype="simple">prompt_server_connection</property>
+                <property name="cursor">arrow</property>
+                <property name="default">active</property>
+                <property name="state">normal</property>
+                <property name="text" translatable="yes">connect</property>
+                <property name="width">13</property>
+                <layout manager="grid">
+                  <property name="column">0</property>
+                  <property name="pady">15</property>
+                  <property name="row">6</property>
+                </layout>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Sizegrip" id="size_grip" named="True">
+            <property name="takefocus">true</property>
+            <layout manager="pack">
+              <property name="anchor">se</property>
+              <property name="side">bottom</property>
+            </layout>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>
