@@ -1,7 +1,24 @@
 <?xml version='1.0' encoding='utf-8'?>
 <interface version="1.4" author="PygubuDesigner 0.39.3">
   <project>
-    <settings />
+    <settings>
+      <setting id="name">File Sharing GUI</setting>
+      <setting id="description">File sharing GUI for Networks Project</setting>
+      <setting id="module_name">srcui</setting>
+      <setting id="template">application</setting>
+      <setting id="main_widget">root</setting>
+      <setting id="main_classname">FileSharingAppUI</setting>
+      <setting id="main_menu" />
+      <setting id="output_dir" />
+      <setting id="output_dir2" />
+      <setting id="import_tkvariables">True</setting>
+      <setting id="use_ttk_styledefinition_file">True</setting>
+      <setting id="use_i18n">False</setting>
+      <setting id="all_ids_attributes">False</setting>
+      <setting id="generate_code_onsave">True</setting>
+      <setting id="use_window_centering_code">False</setting>
+      <setting id="ttk_style_definition_file" />
+    </settings>
     <customwidgets />
   </project>
   <object class="tk.Tk" id="root" named="True">
@@ -210,6 +227,44 @@
               <property name="anchor">se</property>
               <property name="side">bottom</property>
             </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Frame" id="progress_bar_frame" named="True">
+            <property name="height">200</property>
+            <property name="width">200</property>
+            <layout manager="pack">
+              <property name="fill">x</property>
+              <property name="side">left</property>
+            </layout>
+            <child>
+              <object class="ttk.Progressbar" id="progress_bar" named="True">
+                <property name="length">200</property>
+                <property name="maximum">200</property>
+                <property name="orient">horizontal</property>
+                <property name="variable">double:download_completion</property>
+                <layout manager="pack">
+                  <property name="anchor">s</property>
+                  <property name="expand">false</property>
+                  <property name="fill">both</property>
+                  <property name="side">bottom</property>
+                </layout>
+              </object>
+            </child>
+            <child>
+              <object class="tk.Message" id="msg_download_status" named="True">
+                <property name="relief">flat</property>
+                <property name="takefocus">true</property>
+                <property name="text" translatable="yes">No current Downloads</property>
+                <property name="textvariable">string:download_status</property>
+                <property name="width">300</property>
+                <layout manager="pack">
+                  <property name="anchor">w</property>
+                  <property name="expand">true</property>
+                  <property name="side">left</property>
+                </layout>
+              </object>
+            </child>
           </object>
         </child>
       </object>

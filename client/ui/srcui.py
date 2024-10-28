@@ -16,16 +16,17 @@ class FileSharingAppUI:
         self.builder.add_from_file(PROJECT_UI)
         # Main widget
         self.mainwindow: tk.Tk = self.builder.get_object("root", master)
+
+        self.connection_status: tk.StringVar = None
+        self.download_completion: tk.DoubleVar = None
+        self.download_status: tk.StringVar = None
+        self.builder.import_variables(self)
+
         self.builder.connect_callbacks(self)
 
     def run(self):
         self.mainwindow.mainloop()
 
-    """
-    ignore all of the methods after this line
-    pygubu-designer implements it this way so we can change the UI
-    and not affect the methods described in the main module
-    """
     def refresh_filetree(self):
         pass
 
