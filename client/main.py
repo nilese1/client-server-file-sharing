@@ -3,6 +3,15 @@ import pathlib
 import tkinter as tk
 import pygubu
 from ui.srcui import FileSharingAppUI
+from enum import Enum
+
+
+class PacketType(Enum):
+    INVALID = -1
+    LOGIN = 1
+    SEND = 2
+    REQUEST = 3
+    DISCONNECT = 4
 
 
 class FileSharingApp(FileSharingAppUI):
