@@ -3,3 +3,10 @@
 
 # python thingy
 **/__pycache__/
+
+# client and server logs
+/client/logs/*
+/server/logs/*
+
+# server file storage
+/server/server_root/*

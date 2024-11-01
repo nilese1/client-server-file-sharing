@@ -1,7 +1,12 @@
 import socket
 import struct
+import threading
 from threading import Thread
 from enum import Enum
+import logging
+from pathlib import Path
+import datetime
+
 
 class PacketType(Enum):
     INVALID = -1
@@ -10,6 +15,20 @@ class PacketType(Enum):
     REQUEST = 3
     DISCONNECT = 4
 
+LOG_LEVEL = logging.INFO
+logging.basicConfig(filename=Path(f'logs/log_{datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")}.log'), level=LOG_LEVEL,
+                    format='[%(asctime)s][%(levelname)s]: %(message)s', filemode='w')
+logger = logging.getLogger(__name__)
+logger.info(f'Beginning log of {__name__}')
+
+# to show log in console feel free to comment out
+console_handler = logging.StreamHandler()
+console_handler.setLevel(LOG_LEVEL)
+console_handler.setFormatter(logging.Formatter('[%(asctime)s][%(levelname)s]: %(message)s'))
+logger.addHandler(console_handler)
+
+
+
 
 BUFFER_SIZE = 4096
 MAX_CLIENTS = 10
@@ -17,43 +36,83 @@ MAX_CLIENTS = 10
 HOST = '127.0.0.1'
 PORT = 30000
 
+# So multiple clients can download the same file at the same time
+# or download a file currently being uploaded
+lock = threading.Lock()
 
 
 class Server:
     def __init__(self):
+        Thread.__init__(self)
         # only client handlers go in here
         self.connected_clients = []
 
         # start server
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((HOST, PORT))
-        self.server_socket.listen(MAX_CLIENTS) 
+        self.server_socket.listen(MAX_CLIENTS)
+        # so server isn't waiting for connection forever (necessary to exit gracefully) 
+        self.server_socket.settimeout(0.1)
 
     def run(self):
-        print(f'Server listening on {HOST}:{PORT}')
+        logger.info(f'Server listening on {HOST}:{PORT}')
 
-        # listen for connection from client
-        while True:
-            client_socket, addr = self.server_socket.accept()
-            print(f'Client from {addr} connected')
-            self.connect_new_client(client_socket)
+        # I know this looks bad but this was the only way I could get this to exit gracefully
+        try:
+            # listen for connection from client
+            while True:
+                try:
+                    client_socket, addr = self.server_socket.accept()
+                    logger.info(f'Client from {addr} connected')
+                    self.connect_new_client(client_socket, addr)
+                except socket.timeout:
+                    pass 
+                except Exception as e:
+                    logger.error(f'Error connecting client {e}')
 
-    def connect_new_client(self, client_socket):
-        client_handler = ClientHandler(client_socket)
+        except KeyboardInterrupt as e:
+            logger.info(f'KeyboardInterrupt detected: Server exiting...')
+            
+
+    def connect_new_client(self, client_socket, ip_addr):
+        client_handler = ClientHandler(client_socket, ip_addr, self)
         client_handler.start() # check ClientHandler.run()
 
         self.connected_clients.append(client_handler)
 
+    def disconnect_client(self, client_handler):
+        self.connected_clients.remove(client_handler)
+        logger.info(f'Client at {client_handler.client_ip} has disconnected')
+
     def close(self):
         for client in self.connected_clients:
             client.close()
+            client.stop()
 
         self.server_socket.close()
 
+
 class ClientHandler(Thread):
-    def __init__(self, client_socket):
+    def __init__(self, client_socket, client_ip, server):
         Thread.__init__(self)
         self.client_socket = client_socket
+        self.client_ip = client_ip
+        self.server = server
+
+        self._stop = threading.Event()
+
+        self.client_socket.settimeout(0.1)
+
+    def create_packet(self, packet_type, data):
+        # packet structure: [id, packet_type, data]
+        data_bytes = data.encode('utf-8')
+        header = struct.pack('!BI', packet_type, len(data_bytes))
+
+        return header + data_bytes
+    
+    def send_packet(self, packet_type, data):
+        packet = self.create_packet(packet_type, data)
+        self.client_socket.send(packet)
 
     def receive_packet(self):
         # Read packet header
@@ -65,47 +124,73 @@ class ClientHandler(Thread):
         packet_type, packet_size = struct.unpack('!BI', packet_header)
         packet_data = self.client_socket.recv(packet_size).decode()
 
-        print(f'packet received of type {packet_type}')
+        logger.info(f'Packet received of type {PacketType(packet_type).name} and size {packet_size} from {self.client_ip}')
 
         self.handle_packet(packet_type, packet_size, packet_data)
 
     # runs all of the time on the thread
     def run(self):
-        while True:
-           self.receive_packet() 
+        try:
+            while True:
+                if self.stopped():
+                    return
+
+                try:
+                    self.receive_packet()
+                except socket.timeout:
+                    pass
+                # client handler errors on close if this isn't here
+                # if another fix is found feel free to change  
+                except Exception:
+                    pass
+
+        except KeyboardInterrupt:
+            pass
+        finally:
+            logger.debug(f'ClientHandler connected to {self.client_ip} stopping...')
+            self.close()
+
 
     def handle_packet(self, type, size, data):
-        match type:
+        match PacketType(type):
             case PacketType.LOGIN:
-                self.handle_login_packet(type, size, data)
+                self.handle_login_packet(size, data)
             
             case PacketType.SEND:
-                self.handle_login_packet(type, size, data)
+                self.handle_send_packet(size, data)
 
             case PacketType.REQUEST: 
-                self.handle_request_packet(type, size, data)
+                self.handle_request_packet(size, data)
 
             case PacketType.DISCONNECT:
-                self.handle_disconnect_packet(type, size, data)
+                self.handle_disconnect_packet(size, data)
 
             case _:
-                self.handle_invalid_packet(type, size, data)
+                self.handle_invalid_packet(size, data)
 
     # TODO: implement packet handlers
-    def handle_invalid_packet(self, type, size, data):
+    def handle_invalid_packet(self, size, data):
         pass
 
-    def handle_login_packet(self, type, size, data):
+    def handle_login_packet(self, size, data):
         pass
 
-    def handle_send_packet(self, type, size, data):
+    def handle_send_packet(self, size, data):
         pass
     
-    def handle_request_packet(self, type, size, data):
+    def handle_request_packet(self, size, data):
         pass
 
-    def handle_disconnect_packet(self, type, size, data):
-        pass
+    def handle_disconnect_packet(self, size, data):
+        self.stop()
+        self.close()
+        self.server.disconnect_client(self)
+    
+    def stop(self):
+        self._stop.set()
+
+    def stopped(self):
+        return self._stop.is_set()
 
     def close(self):
         self.client_socket.close()
@@ -113,11 +198,11 @@ class ClientHandler(Thread):
 
 
 if __name__ == '__main__':
-    server = Server()
-
     try:
+        server = Server()
         server.run()
-    except KeyboardInterrupt:
-        print("Bye Bye")
+    except Exception as ex:
+        logger.info(f'Server shutting down via {ex}')
     finally:
         server.close()
+    
