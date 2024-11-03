@@ -6,6 +6,7 @@ from ui.srcui import FileSharingAppUI
 from enum import Enum
 from net import Client
 from net import PacketType
+from request import *
 
 
 # get from prompting the user later
@@ -22,7 +23,16 @@ class FileSharingApp(FileSharingAppUI):
         self.client = None
 
     def refresh_filetree(self):
-        pass
+        # relay error to user later
+        if not self.client:
+            return
+
+        filetree = get_filetree(self.client)
+        treeview = self.builder.get_object('tv_filetree')
+        treeview.delete(*treeview.get_children())
+
+        load_filetree(treeview, filetree)
+
 
     def callback(self, event=None):
         pass

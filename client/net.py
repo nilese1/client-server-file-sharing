@@ -6,6 +6,7 @@ from enum import Enum
 import logging
 from pathlib import Path
 import datetime
+import json
 
 class PacketType(Enum):
     INVALID = -1
@@ -44,7 +45,7 @@ class Client(Thread):
 
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # required to exit gracefully
-        self.client_socket.settimeout(0.1)
+        self.client_socket.settimeout(2.0)
 
         # Flag used for thread safety
         self._stop = threading.Event()
@@ -55,7 +56,7 @@ class Client(Thread):
             logger.info(f'Connected to server at {self.server_ip}:{self.server_port}')
 
             # send login information later if doing extra credit
-            self.send_packet(PacketType.LOGIN, 'hihihihi')
+            self.send_packet(PacketType.LOGIN, 'null')
         except Exception as e:
             logger.error(f'Failed to connect to server: {e}')
 
@@ -69,7 +70,7 @@ class Client(Thread):
         
     def create_packet(self, packet_type, data):
         # packet structure: [id, packet_type, data]
-        data_bytes = data.encode('utf-8')
+        data_bytes = json.dumps(data).encode('utf-8')
         header = struct.pack('!BI', packet_type.value, len(data_bytes))
 
         return header + data_bytes
@@ -83,33 +84,46 @@ class Client(Thread):
         packet_header = self.client_socket.recv(5)
         if len(packet_header) < 5:
             return None
-        
+
+        logger.debug(f'packet header {packet_header}')
+
         # make packet readable
         packet_type, packet_size = struct.unpack('!BI', packet_header)
-        packet_data = self.client_socket.recv(packet_size).decode()
+        packet_data = json.loads(self.client_socket.recv(packet_size).decode())
 
-        logger.info(f'packet received of type {packet_type}')
+        logger.info(f'packet received of type {PacketType(packet_type).name}')
+        logger.debug(f'Packet info: {packet_data}')
 
+        return packet_type, packet_size, packet_data
+
+    def wait_for_packet(self):
+        packet_type, packet_size, packet_data = self.receive_packet()
         self.handle_packet(packet_type, packet_size, packet_data)
 
     # runs all of the time on the thread
     def run(self):
-        try:
-            while not self.stopped():
-                try:
-                    self.receive_packet()
-                except socket.timeout:
-                    pass
+        pass
+        '''
+        Commented this out because client is really only going to listen for disconnect packet
+        and it causing weird issues with get_filetree function because I didn't want it in 
+        the handle_packet function. Maybe if we fix this somehow we can add this back
+        '''
+        # try:
+        #     while not self.stopped():
+        #         try:
+        #             self.wait_for_packet()
+        #         except socket.timeout:
+        #             pass
 
-        # client errors on close if this isn't here
-        # if another fix is found feel free to change 
-        except Exception:
-            pass
-        finally: 
-            logger.info(f'Client shutting down...')
+        # # client errors on close if this isn't here
+        # # if another fix is found feel free to change 
+        # except Exception:
+        #     pass
+        # finally: 
+        #     logger.info(f'Client shutting down...')
 
     def handle_packet(self, type, size, data):
-        match type:
+        match PacketType(type):
             case PacketType.SEND:
                 self.handle_send_packet(type, size, data)
 
@@ -124,7 +138,7 @@ class Client(Thread):
         pass
 
     def handle_send_packet(self, type, size, data):
-        pass
+       pass 
     
     def handle_request_packet(self, type, size, data):
         pass

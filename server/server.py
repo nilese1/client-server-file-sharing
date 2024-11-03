@@ -6,6 +6,8 @@ from enum import Enum
 import logging
 from pathlib import Path
 import datetime
+import json
+from handleFolders import *
 
 
 class PacketType(Enum):
@@ -15,7 +17,7 @@ class PacketType(Enum):
     REQUEST = 3
     DISCONNECT = 4
 
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
 logging.basicConfig(filename=Path(f'logs/log_{datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")}.log'), level=LOG_LEVEL,
                     format='[%(asctime)s][%(levelname)s]: %(message)s', filemode='w')
 logger = logging.getLogger(__name__)
@@ -103,16 +105,21 @@ class ClientHandler(Thread):
 
         self.client_socket.settimeout(0.1)
 
+    # Given a dict, converts it to a binary json
     def create_packet(self, packet_type, data):
         # packet structure: [id, packet_type, data]
-        data_bytes = data.encode('utf-8')
-        header = struct.pack('!BI', packet_type, len(data_bytes))
+        data_bytes = json.dumps(data).encode('utf-8')
+        header = struct.pack('!BI', packet_type.value, len(data_bytes))
 
         return header + data_bytes
     
     def send_packet(self, packet_type, data):
-        packet = self.create_packet(packet_type, data)
-        self.client_socket.send(packet)
+        try:
+            packet = self.create_packet(packet_type, data)
+            self.client_socket.send(packet)
+            logger.debug(f'Sent packet of type {packet_type} to {self.client_ip}')
+        except Exception as e:
+            logger.error(f'Unable to send packet: {e}')
 
     def receive_packet(self):
         # Read packet header
@@ -122,10 +129,15 @@ class ClientHandler(Thread):
         
         # make packet readable
         packet_type, packet_size = struct.unpack('!BI', packet_header)
-        packet_data = self.client_socket.recv(packet_size).decode()
+        packet_data = json.loads(self.client_socket.recv(packet_size).decode())
 
         logger.info(f'Packet received of type {PacketType(packet_type).name} and size {packet_size} from {self.client_ip}')
+        logger.debug(f'Packet info: {packet_data}')
 
+        return packet_type, packet_size, packet_data
+        
+    def wait_for_packet(self):
+        packet_type, packet_size, packet_data = self.receive_packet()
         self.handle_packet(packet_type, packet_size, packet_data)
 
     # runs all of the time on the thread
@@ -136,7 +148,7 @@ class ClientHandler(Thread):
                     return
 
                 try:
-                    self.receive_packet()
+                    self.wait_for_packet()
                 except socket.timeout:
                     pass
                 # client handler errors on close if this isn't here
@@ -149,7 +161,6 @@ class ClientHandler(Thread):
         finally:
             logger.debug(f'ClientHandler connected to {self.client_ip} stopping...')
             self.close()
-
 
     def handle_packet(self, type, size, data):
         match PacketType(type):
@@ -170,7 +181,7 @@ class ClientHandler(Thread):
 
     # TODO: implement packet handlers
     def handle_invalid_packet(self, size, data):
-        pass
+        logger.error(f'Client from {self.client_ip} has sent an invalid packet.')
 
     def handle_login_packet(self, size, data):
         pass
@@ -179,7 +190,16 @@ class ClientHandler(Thread):
         pass
     
     def handle_request_packet(self, size, data):
-        pass
+        match data['type']:
+            case 'filetree':
+                filetree = list_dir(Path(ROOT_PATH))
+                self.send_packet(PacketType.SEND, {
+                    'type' : 'filetree',
+                    'data' : filetree
+                })
+            
+            case _:
+                logger.error(f'Invalid packet subtype received from {self.client_ip}, received subtype {data['type']}')
 
     def handle_disconnect_packet(self, size, data):
         self.stop()
