@@ -1,7 +1,6 @@
 # for dir and subfolder functions
 from pathlib import Path
 from pprint import pprint
-import os
 
 # put in config file later
 ROOT_PATH = "server_root"

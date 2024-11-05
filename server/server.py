@@ -199,7 +199,7 @@ class ClientHandler(Thread):
                 })
             
             case _:
-                logger.error(f'Invalid packet subtype received from {self.client_ip}, received subtype {data['type']}')
+                logger.error(f'Invalid packet subtype received from {self.client_ip}, received subtype {data["type"]}')
 
     def handle_disconnect_packet(self, size, data):
         self.stop()
