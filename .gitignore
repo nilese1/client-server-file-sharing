@@ -4,9 +4,11 @@
 # python thingy
 **/__pycache__/
 
-# client and server logs
-/client/logs/*
-/server/logs/*
+# ignore all log files
+**/*.log
 
 # server file storage
 /server/server_root/*
+# still include the server_root directory itself
+!/server/server_root/
+
