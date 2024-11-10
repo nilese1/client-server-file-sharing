@@ -34,3 +34,40 @@ def load_filetree(treeview, filetree: dict, parent=None):
             load_filetree(treeview, value, item)
         else:
             treeview.insert(parent, 'end', text=key)
+
+'''
+Waits for a confirmation packet from the server, going to be our main way of
+handling errors on the server side and relaying information to the user
+'''
+def wait_for_confirmation(client):
+    type, size, data = client.receive_packet()
+
+    return type, data
+
+
+def delete_file_handler(client, path):
+    client.send_packet(PacketType.REQUEST, {
+        'type' : 'delete',
+        'path' : path
+    })
+
+    type, data = wait_for_confirmation(client)
+
+    if type == PacketType.INVALID:
+        raise Exception(data) # data will contain the error message
+
+    return data
+
+def create_directory_handler(client, path):
+    client.send_packet(PacketType.REQUEST, {
+        'type' : 'create_dir',
+        'path' : path
+    })
+
+    type, data = wait_for_confirmation(client)
+
+    if type == PacketType.INVALID:
+        raise Exception(data) # data will contain the error message
+
+    return data
+

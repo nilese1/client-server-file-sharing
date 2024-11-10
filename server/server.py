@@ -11,11 +11,11 @@ from handleFolders import *
 
 
 class PacketType(Enum):
-    INVALID = -1
     LOGIN = 1
     SEND = 2
     REQUEST = 3
     DISCONNECT = 4
+    INVALID = 5
 
 LOG_LEVEL = logging.DEBUG
 logging.basicConfig(filename=Path(f'logs/log_{datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")}.log'), level=LOG_LEVEL,
@@ -153,8 +153,8 @@ class ClientHandler(Thread):
                     pass
                 # client handler errors on close if this isn't here
                 # if another fix is found feel free to change  
-                except Exception:
-                    pass
+                # except Exception as e:
+                #     logger.error(f'Error in client handler: {e}')
 
         except KeyboardInterrupt:
             pass
@@ -184,11 +184,18 @@ class ClientHandler(Thread):
         logger.error(f'Client from {self.client_ip} has sent an invalid packet.')
 
     def handle_login_packet(self, size, data):
+        # TODO: handle authentication here
         pass
 
     def handle_send_packet(self, size, data):
-        pass
-    
+        # put a match statement here so we can handle different types of sends (even though we never will)
+        match data['type']:
+            case 'upload':
+                pass
+
+            case _:
+                logger.error(f'Invalid packet subtype received from {self.client_ip}, received subtype {data["type"]}')
+
     def handle_request_packet(self, size, data):
         match data['type']:
             case 'filetree':
@@ -197,6 +204,28 @@ class ClientHandler(Thread):
                     'type' : 'filetree',
                     'data' : filetree
                 })
+            
+            case 'delete':
+                logger.debug(f'Deleting file {Path(ROOT_PATH) / data["path"]}')
+                try:
+                    delete_dir(Path(ROOT_PATH) / data['path'])
+                    logger.info(f'Deleted file {data["path"]}')
+                    self.send_packet(PacketType.REQUEST, 'null')
+                except Exception as e:
+                    self.send_packet(PacketType.INVALID, f'Error deleting file {data["path"]}: {e}')
+                    logger.error(f'Error deleting file {data["path"]}: {e}')
+
+            case 'create_dir':
+                try:
+                    create_dir(Path(ROOT_PATH) / data['path'])
+                    logger.info(f'Created directory {data["path"]}')
+                    self.send_packet(PacketType.REQUEST, 'null')
+                except Exception as e:
+                    self.send_packet(PacketType.INVALID, f'Error creating directory {data["path"]}: {e}')
+                    logger.error(f'Error creating directory {data["path"]}: {e}')
+
+            case 'download':
+                pass
             
             case _:
                 logger.error(f'Invalid packet subtype received from {self.client_ip}, received subtype {data["type"]}')

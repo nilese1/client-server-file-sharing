@@ -26,7 +26,6 @@ def list_dir(rootPath: Path):
 
     
     return files_dict
-        
 
 
 def create_dir(path: Path):
@@ -34,12 +33,22 @@ def create_dir(path: Path):
     Creates a directory at the specified path. Nested directories can be created.
     '''
 
+    if path.exists():
+        raise FileExistsError(f'Directory {path} already exists')
+
     path.mkdir(parents=True) # parents=True allows for making subdirectories
+
 
 def delete_dir(path: Path):
     '''
     Recursively delete specified directory. Will delete everything in that directory!
     '''
+
+    if not path.exists():
+        raise FileNotFoundError(f'Directory {path} does not exist')
+    elif not path.is_dir():
+        path.unlink()
+        return
 
     for subPath in path.iterdir():
         if subPath.is_file(): 

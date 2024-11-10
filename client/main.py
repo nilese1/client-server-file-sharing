@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import pathlib
 import tkinter as tk
+from tkinter import simpledialog
 import pygubu
 from ui.srcui import FileSharingAppUI
 from enum import Enum
@@ -20,7 +21,23 @@ class FileSharingApp(FileSharingAppUI):
 
         # Kill client thread on closing
         self.mainwindow.protocol('WM_DELETE_WINDOW', self.close)
+        self.treeview = self.builder.get_object('tv_filetree')
         self.client = None
+
+    '''
+    get an item's path from a selected item in the treeview that the user is currently clicked on
+    '''
+    def get_item_path(self, item):
+        if not item:
+            return ''
+        
+        selected_item = self.treeview.item(item)
+        item_path = selected_item["text"]
+        parent_item = self.treeview.parent(item)
+        while parent_item:
+            item_path = self.treeview.item(parent_item)['text'] + '/' + item_path
+            parent_item = self.treeview.parent(parent_item)
+        return item_path
 
     def refresh_filetree(self):
         # relay error to user later
@@ -28,20 +45,45 @@ class FileSharingApp(FileSharingAppUI):
             return
 
         filetree = get_filetree(self.client)
-        treeview = self.builder.get_object('tv_filetree')
-        treeview.delete(*treeview.get_children())
+        self.treeview.delete(*self.treeview.get_children())
 
-        load_filetree(treeview, filetree)
+        load_filetree(self.treeview, filetree)
 
 
     def callback(self, event=None):
         pass
 
     def create_directory(self):
-        pass
+        if not self.client:
+            return
+
+        new_dir = simpledialog.askstring("Input", "Enter the new directory name:", parent=self.mainwindow)
+        item = self.treeview.focus()
+        # user cancelled
+        if not new_dir:
+            return
+        new_dir = self.get_item_path(item) + "/" + new_dir
+
+        try:
+            create_directory_handler(self.client, new_dir)
+        except Exception as e:
+            # TODO: handle error
+            pass
 
     def delete_file(self):
-        pass
+        if not self.client:
+           return
+
+        selected_item = self.treeview.focus()
+        item_path = self.get_item_path(selected_item)
+
+
+        # item that user selects by clicking on it
+        try:
+            delete_file_handler(self.client, item_path)
+        except Exception as e:
+            # TODO: handle error
+            pass
 
     def download_file(self):
         pass

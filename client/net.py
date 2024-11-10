@@ -9,11 +9,11 @@ import datetime
 import json
 
 class PacketType(Enum):
-    INVALID = -1
     LOGIN = 1
     SEND = 2
     REQUEST = 3
     DISCONNECT = 4
+    INVALID = 5 # used for errors, changed from -1 to 5 because apparently struct only accepts unsigned ints
 
 
 LOG_LEVEL = logging.DEBUG
