@@ -23,6 +23,12 @@ class FileSharingApp(FileSharingAppUI):
         self.mainwindow.protocol('WM_DELETE_WINDOW', self.close)
         self.treeview = self.builder.get_object('tv_filetree')
         self.client = None
+        self.treeview.bind('<Button-3>', self.deselect_item_on_empty_click)
+
+    def deselect_item_on_empty_click(self, event):
+        if self.treeview.selection():
+            self.treeview.selection_remove(self.treeview.focus())
+
 
     '''
     get an item's path from a selected item in the treeview that the user is currently clicked on
@@ -62,10 +68,13 @@ class FileSharingApp(FileSharingAppUI):
         # user cancelled
         if not new_dir:
             return
-        new_dir = self.get_item_path(item) + "/" + new_dir
+        
+        if item:
+            new_dir = self.get_item_path(item) + "/" + new_dir
 
         try:
             create_directory_handler(self.client, new_dir)
+            self.refresh_filetree()
         except Exception as e:
             # TODO: handle error
             pass
@@ -81,6 +90,7 @@ class FileSharingApp(FileSharingAppUI):
         # item that user selects by clicking on it
         try:
             delete_file_handler(self.client, item_path)
+            self.refresh_filetree()
         except Exception as e:
             # TODO: handle error
             pass

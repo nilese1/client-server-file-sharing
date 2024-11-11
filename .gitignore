@@ -12,3 +12,6 @@
 # still include the server_root directory itself
 !/server/server_root/
 
+
+# don't ignoresample files so empty directories are tracked
+!**/sample.txt
