@@ -2,12 +2,14 @@
 import pathlib
 import tkinter as tk
 from tkinter import simpledialog
+from tkinter import filedialog
 import pygubu
 from ui.srcui import FileSharingAppUI
 from enum import Enum
 from net import Client
 from net import PacketType
 from request import *
+from send import *
 
 
 # get from prompting the user later
@@ -96,10 +98,47 @@ class FileSharingApp(FileSharingAppUI):
             pass
 
     def download_file(self):
-        pass
+        if not self.client:
+            return
+
+        # get file the user has clicked on
+        selected_item = self.treeview.focus()
+        item_path = self.get_item_path(selected_item)
+
+        # get path to save the file to
+        folder_selected = filedialog.askdirectory()
+        if not folder_selected:
+            return
+        
+        try:
+            download_file_handler(self.client, item_path, self.download_completion, folder_selected)
+        except Exception as e:
+            # TODO: handle error
+            logger.error(f'Error downloading file {item_path}: {e}')
+
 
     def upload_file(self):
-        pass
+        if not self.client:
+            return
+
+        item = self.treeview.focus()
+        item_path = ''
+
+       
+        file_to_upload = filedialog.askopenfilename()
+        if not file_to_upload:
+            return
+        
+        if item:
+            item_path = self.get_item_path(item) + "/" + Path(file_to_upload).name
+
+        try:
+            upload_file_handler(self.client, file_to_upload, item_path)
+            self.refresh_filetree()
+        except Exception as e:
+            # TODO: handle error
+            logger.error(f'Error uploading file {file_to_upload}: {e}')
+
 
     def prompt_server_connection(self):
         # ask client if they'd like to disconnect later

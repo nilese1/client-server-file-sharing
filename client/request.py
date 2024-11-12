@@ -1,5 +1,6 @@
 from net import *
 import asyncio
+import base64
 
 '''
 This file will be used to send packets of the request 
@@ -71,3 +72,34 @@ def create_directory_handler(client, path):
 
     return data
 
+
+def download_file_handler(client, path, progress_bar, save_path):
+    logger.debug(f'Requesting to download file {path}')
+    client.send_packet(PacketType.REQUEST, {
+        'type' : 'download',
+        'path' : path
+    })
+
+    type, data = wait_for_confirmation(client)
+
+    if type == PacketType.INVALID:
+        raise Exception(data) # data will contain the error message
+
+    with open(Path(save_path) / data['filename'], 'wb') as file:
+        total_bytes_received = 0
+        total_file_size = data['size']
+        progress_bar.set(0)
+        packet_data = {'data' : 'not null'}
+
+        logger.debug(f'Starting to download file {data["filename"]}')
+        # server sends null packet to signify end of file
+        while packet_data['data'] != 'null':
+            packet_type, packet_size, packet_data = client.receive_packet() 
+            decoded_data = base64.b64decode(packet_data['data'].encode('utf-8'))
+            total_bytes_received += len(decoded_data)
+            file.write(decoded_data)
+            # not sure why we need to multiply by 2 here, but it works
+            # also, put on separate thread later so it actually updates in real time
+            progress_bar.set(total_bytes_received/total_file_size * 100 * 2)
+        
+    logger.debug(f'Finished downloading file {data["filename"]}')

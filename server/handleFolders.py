@@ -20,7 +20,8 @@ def list_dir(rootPath: Path):
             curr = curr.setdefault(part, {})
         
         if subPath.is_file():
-            curr[parts[-1]] = None
+            # assign size of file if it is a file and not a directory
+            curr[parts[-1]] = subPath.stat().st_size
         else:
             curr[parts[-1]] = {}
 

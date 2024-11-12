@@ -8,7 +8,8 @@ from pathlib import Path
 import datetime
 import json
 from handleFolders import *
-
+from handleFiles import *
+import base64
 
 class PacketType(Enum):
     LOGIN = 1
@@ -103,12 +104,12 @@ class ClientHandler(Thread):
 
         self._stop = threading.Event()
 
-        self.client_socket.settimeout(0.1)
+        self.client_socket.settimeout(1.0)
 
     # Given a dict, converts it to a binary json
     def create_packet(self, packet_type, data):
         # packet structure: [id, packet_type, data]
-        data_bytes = json.dumps(data).encode('utf-8')
+        data_bytes = base64.b64encode(json.dumps(data).encode('utf-8'))
         header = struct.pack('!BI', packet_type.value, len(data_bytes))
 
         return header + data_bytes
@@ -129,7 +130,7 @@ class ClientHandler(Thread):
         
         # make packet readable
         packet_type, packet_size = struct.unpack('!BI', packet_header)
-        packet_data = json.loads(self.client_socket.recv(packet_size).decode())
+        packet_data = json.loads(base64.b64decode(self.client_socket.recv(packet_size).decode('utf-8')))
 
         logger.info(f'Packet received of type {PacketType(packet_type).name} and size {packet_size} from {self.client_ip}')
         logger.debug(f'Packet info: {packet_data}')
@@ -191,7 +192,33 @@ class ClientHandler(Thread):
         # put a match statement here so we can handle different types of sends (even though we never will)
         match data['type']:
             case 'upload':
-                pass
+                try:
+                    logger.info(f'Received upload request for {data["path"]}')
+
+                    packet_data = {'data' : 'not null'}
+                    total_bytes_received = 0
+                    total_file_size = data['size']
+                    if data['path'] == '':
+                        data['path'] = data['filename']
+
+                    # receive file data
+                    with open(Path(ROOT_PATH) / data['path'], 'wb') as file:
+                        # send confirmation packet if it is ok to upload
+                        self.send_packet(PacketType.SEND, 'null')
+
+                        while packet_data['data'] != 'null':
+                            packet_type, packet_size, packet_data = self.receive_packet()
+                            decoded_data = base64.b64decode(packet_data['data'].encode('utf-8'))
+                            file.write(decoded_data)
+                            total_bytes_received += len(decoded_data)
+                    
+                    # send confirmation packet
+                    self.send_packet(PacketType.SEND, 'null')
+
+                    logger.info(f'Finished uploading file {data["path"]}')
+                except Exception as e:
+                    logger.error(f'Error uploading file {data["filename"]}: {e}')
+                    self.send_packet(PacketType.INVALID, f'Error uploading file {data["filename"]}: {e}')
 
             case _:
                 logger.error(f'Invalid packet subtype received from {self.client_ip}, received subtype {data["type"]}')
@@ -225,7 +252,33 @@ class ClientHandler(Thread):
                     logger.error(f'Error creating directory {data["path"]}: {e}')
 
             case 'download':
-                pass
+                # maybe refactor this to be a function, had trouble with circular imports
+                try:
+                    # send client file info
+                    logger.debug(f'Sending file info for {Path(ROOT_PATH) / data["path"] }')
+                    file_size, file_name = get_file_info(Path(ROOT_PATH) / data['path'])
+                    self.send_packet(PacketType.REQUEST, {
+                        'type' : 'download',
+                        'size' : file_size,
+                        'filename' : file_name
+                    })
+
+                    logger.debug(f'Sending file {Path(ROOT_PATH) / data["path"]}')
+                    with open(Path(ROOT_PATH) / data['path'], 'rb') as file:
+                        while data := file.read(BUFFER_SIZE):
+                            self.send_packet(PacketType.SEND, {
+                                'data' : base64.b64encode(data).decode('utf-8')
+                            })
+
+                    # send null packet to signify end of file
+                    self.send_packet(PacketType.SEND, {
+                        'data' : 'null'
+                    })
+
+                    logger.debug(f'Finished sending file {Path(ROOT_PATH) / file_name}')
+                except Exception as e:
+                    self.send_packet(PacketType.INVALID, f'Error sending file {file_name}: {e}')
+                    logger.error(f'Error sending file {file_name}: {e}')
             
             case _:
                 logger.error(f'Invalid packet subtype received from {self.client_ip}, received subtype {data["type"]}')

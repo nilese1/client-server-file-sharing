@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 import datetime
 import json
+import base64
 
 class PacketType(Enum):
     LOGIN = 1
@@ -70,7 +71,7 @@ class Client(Thread):
         
     def create_packet(self, packet_type, data):
         # packet structure: [id, packet_type, data]
-        data_bytes = json.dumps(data).encode('utf-8')
+        data_bytes = base64.b64encode(json.dumps(data).encode('utf-8'))
         header = struct.pack('!BI', packet_type.value, len(data_bytes))
 
         return header + data_bytes
@@ -89,9 +90,9 @@ class Client(Thread):
 
         # make packet readable
         packet_type, packet_size = struct.unpack('!BI', packet_header)
-        packet_data = json.loads(self.client_socket.recv(packet_size).decode())
+        packet_data = json.loads(base64.b64decode(self.client_socket.recv(packet_size).decode('utf-8')))
 
-        logger.info(f'packet received of type {PacketType(packet_type).name}')
+        logger.info(f'packet received of type {PacketType(packet_type).name} and size {packet_size}')
         logger.debug(f'Packet info: {packet_data}')
 
         return packet_type, packet_size, packet_data
