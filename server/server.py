@@ -130,7 +130,7 @@ class ClientHandler(Thread):
         
         # make packet readable
         packet_type, packet_size = struct.unpack('!BI', packet_header)
-        packet_data = json.loads(base64.b64decode(self.client_socket.recv(packet_size).decode('utf-8')))
+        packet_data = json.loads(base64.b64decode(self.client_socket.recv(packet_size)).decode('utf-8'))
 
         logger.info(f'Packet received of type {PacketType(packet_type).name} and size {packet_size} from {self.client_ip}')
         logger.debug(f'Packet info: {packet_data}')
