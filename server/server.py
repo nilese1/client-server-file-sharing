@@ -36,7 +36,7 @@ logger.addHandler(console_handler)
 BUFFER_SIZE = 1024
 MAX_CLIENTS = 10
 # read from config file later
-HOST = '127.0.0.1'
+HOST = ''
 PORT = 30000
 
 # So multiple clients can download the same file at the same time
