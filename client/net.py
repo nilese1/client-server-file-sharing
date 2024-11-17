@@ -36,7 +36,7 @@ but in the future it would be smarter to handle it in main so we
 can relay errors to the ui easier 
 '''
 
-BUFFER_SIZE = 4096
+BUFFER_SIZE = 1024
 
 class Client(Thread):
     def __init__(self, server_ip, server_port):
@@ -69,10 +69,11 @@ class Client(Thread):
         self.close()
      
     def encode_data(self, data):
-        return base64.b64encode(json.dumps(data))
+        return json.dumps(data).encode('utf-8')
     
     def decode_data(self, data):
-        return json.loads(base64.b64decode(data))
+        data_bytes = base64.b64decode(data)
+        return json.loads(data.decode('utf-8'))
         
     def create_packet(self, packet_type, data):
         # packet structure: [id, packet_type, data]
@@ -95,7 +96,14 @@ class Client(Thread):
 
         # make packet readable
         packet_type, packet_size = struct.unpack('!BI', packet_header)
-        packet_data = self.decode_data(self.client_socket.recv(packet_size))
+
+        packet_bytes = self.client_socket.recv(packet_size)
+
+        # in case the packet is split into multiple packets
+        while len(packet_bytes) < packet_size:
+            packet_bytes += self.client_socket.recv(packet_size - len(packet_bytes))
+
+        packet_data = self.decode_data(packet_bytes)
 
         logger.info(f'packet received of type {PacketType(packet_type).name} and size {packet_size}')
         logger.debug(f'Packet info: {packet_data}')
