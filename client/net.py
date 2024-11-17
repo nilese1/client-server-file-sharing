@@ -72,7 +72,6 @@ class Client(Thread):
         return json.dumps(data).encode('utf-8')
     
     def decode_data(self, data):
-        data_bytes = base64.b64decode(data)
         return json.loads(data.decode('utf-8'))
         
     def create_packet(self, packet_type, data):
