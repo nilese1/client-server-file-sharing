@@ -10,6 +10,7 @@ import json
 from handleFolders import *
 from handleFiles import *
 import base64
+from metrics import Metrics
 
 class PacketType(Enum):
     LOGIN = 1
@@ -36,7 +37,7 @@ logger.addHandler(console_handler)
 BUFFER_SIZE = 1024
 MAX_CLIENTS = 10
 # read from config file later
-HOST = ''
+HOST = '127.0.0.1'
 PORT = 30000
 
 # So multiple clients can download the same file at the same time
@@ -105,6 +106,8 @@ class ClientHandler(Thread):
         self._stop = threading.Event()
 
         self.client_socket.settimeout(1.0)
+
+        self.clientMetrics = Metrics(client_ip)
 
     def encode_data(self, data):
         return json.dumps(data).encode('utf-8')
@@ -213,6 +216,9 @@ class ClientHandler(Thread):
                     if data['path'] == '':
                         data['path'] = data['filename']
 
+                    ntp_start = data['ntpStart'] # initial upload packet will have ntpStart time
+
+
                     # receive file data
                     with open(Path(ROOT_PATH) / data['path'], 'wb') as file:
                         # send confirmation packet if it is ok to upload
@@ -226,6 +232,10 @@ class ClientHandler(Thread):
                     
                     # send confirmation packet
                     self.send_packet(PacketType.SEND, 'null')
+
+                    ntp_end = self.clientMetrics.getNTPTime()
+
+                    self.clientMetrics.calculateMetrics(type="upload", ntpStart=ntp_start, ntpEnd=ntp_end, bytes_transferred=total_bytes_received)
 
                     logger.info(f'Finished uploading file {data["path"]}')
                 except Exception as e:
@@ -275,6 +285,8 @@ class ClientHandler(Thread):
                         'filename' : file_name
                     })
 
+                    ntp_start = data['ntpStart'] # initial download packet will have ntpStart time
+
                     logger.debug(f'Sending file {Path(ROOT_PATH) / data["path"]}')
                     with open(Path(ROOT_PATH) / data['path'], 'rb') as file:
                         while data := file.read(BUFFER_SIZE):
@@ -288,6 +300,12 @@ class ClientHandler(Thread):
                     })
 
                     logger.debug(f'Finished sending file {Path(ROOT_PATH) / file_name}')
+
+                    ntp_end = self.clientMetrics.getNTPTime()
+
+                    self.clientMetrics.calculateMetrics(type="download", ntpStart=ntp_start, ntpEnd=ntp_end, bytes_transferred=file_size)
+
+                    
                 except Exception as e:
                     self.send_packet(PacketType.INVALID, f'Error sending file {file_name}: {e}')
                     logger.error(f'Error sending file {file_name}: {e}')

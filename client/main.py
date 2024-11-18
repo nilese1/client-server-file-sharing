@@ -13,7 +13,7 @@ from send import *
 
 
 # get from prompting the user later
-SERVER_IP = 'enter ip here'
+SERVER_IP = '127.0.0.1'
 SERVER_PORT = 30000
 
 
