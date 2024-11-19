@@ -106,9 +106,13 @@ def download_file_handler(client, path, progress_bar, save_path):
         packet_data = {'data' : 'not null'}
 
         logger.debug(f'Starting to download file {data["filename"]}')
-        # server sends null packet to signify end of file
-        while packet_data['data'] != 'null':
-            packet_type, packet_size, packet_data = client.receive_packet() 
+        while True:
+            packet_type, packet_size, packet_data = client.receive_packet()
+            
+            # sevrer sends end of file packet
+            if packet_data['data'] != 'null':
+                break
+
             decoded_data = base64.b64decode(packet_data['data'].encode('utf-8'))
             total_bytes_received += len(decoded_data)
             file.write(decoded_data)

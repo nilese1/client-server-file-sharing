@@ -224,8 +224,13 @@ class ClientHandler(Thread):
                         # send confirmation packet if it is ok to upload
                         self.send_packet(PacketType.SEND, 'null')
 
-                        while packet_data['data'] != 'null':
+                        while True:
                             packet_type, packet_size, packet_data = self.receive_packet()
+
+                            # client sends end of file packet
+                            if packet_data['data'] == 'null':
+                                break
+
                             decoded_data = base64.b64decode(packet_data['data'].encode('utf-8'))
                             file.write(decoded_data)
                             total_bytes_received += len(decoded_data)
