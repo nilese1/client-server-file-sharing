@@ -7,8 +7,8 @@ import logging
 from pathlib import Path
 import datetime
 import json
-from handleFolders import *
-from handleFiles import *
+import handleFolders
+import handleFiles
 import base64
 import hashlib
 import os
@@ -28,6 +28,9 @@ class PacketType(Enum):
     DISCONNECT = 4
     INVALID = 5
 
+# put in config file later
+ROOT_PATH = "server_root"
+
 LOG_LEVEL = logging.DEBUG
 logging.basicConfig(filename=Path(f'logs/log_{datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")}.log'), level=LOG_LEVEL,
                     format='[%(asctime)s][%(levelname)s]: %(message)s', filemode='w')
@@ -41,9 +44,7 @@ console_handler.setFormatter(logging.Formatter('[%(asctime)s][%(levelname)s]: %(
 logger.addHandler(console_handler)
 
 
-
-
-BUFFER_SIZE = 1024
+BUFFER_SIZE = 4096
 MAX_CLIENTS = 10
 # read from config file later
 HOST = '127.0.0.1'
@@ -53,7 +54,10 @@ PORT = 30000
 # or download a file currently being uploaded
 lock = threading.Lock()
 
-
+'''
+Handles connections from multiple clients by establishing a new thread for each client
+each client handler is responsible for handling the client's requests and sending responses
+'''
 class Server:
     def __init__(self):
         Thread.__init__(self)
@@ -67,6 +71,10 @@ class Server:
         # so server isn't waiting for connection forever (necessary to exit gracefully) 
         self.server_socket.settimeout(0.1)
 
+    '''
+    Listens for connections from clients and establishes a new thread for each client,
+    runs on thread.start()
+    '''
     def run(self):
         logger.info(f'Server listening on {HOST}:{PORT}')
 
@@ -86,17 +94,25 @@ class Server:
         except KeyboardInterrupt as e:
             logger.info(f'KeyboardInterrupt detected: Server exiting...')
             
-
+    '''
+    Connects a new client to the server by establishing a new thread for the client
+    '''
     def connect_new_client(self, client_socket, ip_addr):
         client_handler = ClientHandler(client_socket, ip_addr, self)
         client_handler.start() # check ClientHandler.run()
 
         self.connected_clients.append(client_handler)
 
+    '''
+    Disconnects a client from the server
+    '''
     def disconnect_client(self, client_handler):
         self.connected_clients.remove(client_handler)
         logger.info(f'Client at {client_handler.client_ip} has disconnected')
 
+    '''
+    Closes all connections to clients and stops all client threads
+    '''
     def close(self):
         for client in self.connected_clients:
             client.close()
@@ -105,6 +121,10 @@ class Server:
         self.server_socket.close()
 
 
+'''
+Handles requests from a single client, responsible for sending and receiving packets
+as well as controlling most of the server logic
+'''
 class ClientHandler(Thread):
     def __init__(self, client_socket, client_ip, server):
         Thread.__init__(self)
@@ -112,26 +132,28 @@ class ClientHandler(Thread):
         self.client_ip = client_ip
         self.server = server
 
+        # Magical flag to stop the thread as soon as it is set
         self._stop = threading.Event()
 
         self.client_socket.settimeout(1.0)
 
         self.clientMetrics = Metrics(client_ip)
 
+        self.authenticated = False
+
     def encode_data(self, data):
         return json.dumps(data).encode('utf-8')
-
+    
     def decode_data(self, data):
         return json.loads(data.decode('utf-8'))
 
-    # Given a dict, converts it to a binary json
     def create_packet(self, packet_type, data):
         # packet structure: [id, packet_type, data]
         data_bytes = self.encode_data(data)
         header = struct.pack('!BI', packet_type.value, len(data_bytes))
 
         return header + data_bytes
-    
+
     def send_packet(self, packet_type, data):
         try:
             packet = self.create_packet(packet_type, data)
@@ -140,6 +162,9 @@ class ClientHandler(Thread):
         except Exception as e:
             logger.error(f'Unable to send packet: {e}')
 
+    '''
+    Receives a packet from a client and returns a decoded dict
+    '''
     def receive_packet(self):
         # Read packet header
         packet_header = self.client_socket.recv(5)
@@ -156,18 +181,12 @@ class ClientHandler(Thread):
 
         packet_data = self.decode_data(packet_bytes)
 
-            # Receive the actual data payload based on the packet size
-            packet_data_raw = self.client_socket.recv(packet_size)
+        # Decode the payload and load it as JSON
+        packet_data_str = packet_bytes.decode('utf-8')
+        packet_data = json.loads(packet_data_str)  # Ensure packet_data is a dictionary
 
-            # Decode the payload and load it as JSON
-            packet_data_str = base64.b64decode(packet_data_raw).decode('utf-8')
-            packet_data = json.loads(packet_data_str)  # Ensure packet_data is a dictionary
+        return packet_type, packet_size, packet_data
 
-            return packet_type, packet_size, packet_data
-        except Exception as e:
-            logger.error(f"Error receiving packet: {e}")
-            return None, None, None  # Return None on error for consistent handling
-        
     def wait_for_packet(self):
         # Unpack the packet directly and only proceed if we get a valid packet
         packet_type, packet_size, packet_data = self.receive_packet()
@@ -177,10 +196,11 @@ class ClientHandler(Thread):
         else:
             logger.error("Received an invalid or empty packet, skipping packet handling.")
 
-    # runs all the time on the thread
+    # runs all of the time on the thread
     def run(self):
         try:
             while True:
+                # thread safe flag to stop the thread when the flag is set
                 if self.stopped():
                     return
 
@@ -188,10 +208,6 @@ class ClientHandler(Thread):
                     self.wait_for_packet()
                 except socket.timeout:
                     pass
-                # client handler errors on close if this isn't here
-                # if another fix is found feel free to change  
-                # except Exception as e:
-                #     logger.error(f'Error in client handler: {e}')
 
         except KeyboardInterrupt:
             pass
@@ -200,41 +216,35 @@ class ClientHandler(Thread):
             self.close()
 
     def handle_packet(self, packet_type, packet_size, packet_data):
-        if not self.authenticated:
-            if packet_type == PacketType.LOGIN.value:
-                    self.handle_login_packet(packet_data)
-            else:
-                    self.send_packet(PacketType.INVALID, {"error": "Authentication required"})
-            return
-        # Process other packet types if authenticated
-        ...
-        ...
+        match packet_type:
+            case PacketType.LOGIN.value:
+                self.handle_login_packet(packet_data)
+            case PacketType.SEND.value:
+                self.handle_send_packet(packet_size, packet_data)
+            case PacketType.REQUEST.value:
+                self.handle_request_packet(packet_size, packet_data)
+            case PacketType.DISCONNECT.value:
+                self.handle_disconnect_packet(packet_size, packet_data)
+            case _:
+                self.handle_invalid_packet(packet_size, packet_data)
 
-                # TODO: implement packet handlers
     def handle_invalid_packet(self, size, data):
         logger.error(f'Client from {self.client_ip} has sent an invalid packet.')
 
-    class ClientHandler(Thread):
-        def __init__(self, client_socket, client_ip, server):
-            super().__init__()
-            self.client_socket = client_socket
-            self.client_ip = client_ip
-            self.server = server
-            self.authenticated = False  # Track authentication status
-
     def handle_login_packet(self, data):
-        username = data.get("username")
-        received_password_hash = data.get("password")
-        stored_password_hash = user_db.get(username)
+        pass
+        # uncomment when we implement authentication
+        # username = data.get("username")
+        # received_password_hash = data.get("password")
+        # stored_password_hash = user_db.get(username)
 
-        if stored_password_hash and received_password_hash == stored_password_hash:
-            self.authenticated = True
-            self.send_packet(PacketType.LOGIN, {"status": "success"})
-            logger.info(f"Client {self.client_ip} authenticated successfully.")
-        else:
-            self.send_packet(PacketType.INVALID, {"error": "Invalid credentials"})
-            logger.info(f"Client {self.client_ip} failed authentication.")
-
+        # if stored_password_hash and received_password_hash == stored_password_hash:
+        #     self.authenticated = True
+        #     self.send_packet(PacketType.LOGIN, {"status": "success"})
+        #     logger.info(f"Client {self.client_ip} authenticated successfully.")
+        # else:
+        #     self.send_packet(PacketType.INVALID, {"error": "Invalid credentials"})
+        #     logger.info(f"Client {self.client_ip} failed authentication.")
 
     def handle_send_packet(self, size, data):
         # put a match statement here so we can handle different types of sends (even though we never will)
@@ -249,12 +259,14 @@ class ClientHandler(Thread):
                     if data['path'] == '':
                         data['path'] = data['filename']
 
+                    ntp_start = data['ntpStart'] # initial upload packet will have ntpStart time
+                    
                     # receive file data
                     with open(Path(ROOT_PATH) / data['path'], 'wb') as file:
                         # send confirmation packet if it is ok to upload
                         self.send_packet(PacketType.SEND, 'null')
 
-                        while packet_data['data'] != 'null':
+                        while True:
                             packet_type, packet_size, packet_data = self.receive_packet()
 
                             # client sends end of file packet
@@ -283,16 +295,16 @@ class ClientHandler(Thread):
     def handle_request_packet(self, size, data):
         match data['type']:
             case 'filetree':
-                filetree = list_dir(Path(ROOT_PATH))
+                filetree = handleFolders.list_dir(Path(handleFiles.ROOT_PATH))
                 self.send_packet(PacketType.SEND, {
                     'type' : 'filetree',
                     'data' : filetree
                 })
             
             case 'delete':
-                logger.debug(f'Deleting file {Path(ROOT_PATH) / data["path"]}')
+                logger.debug(f'Deleting file {Path(handleFiles.ROOT_PATH) / data["path"]}')
                 try:
-                    delete_dir(Path(ROOT_PATH) / data['path'])
+                    handleFiles.delete_file(Path(handleFiles.ROOT_PATH) / data['path'])
                     logger.info(f'Deleted file {data["path"]}')
                     self.send_packet(PacketType.REQUEST, 'null')
                 except Exception as e:
@@ -301,7 +313,7 @@ class ClientHandler(Thread):
 
             case 'create_dir':
                 try:
-                    create_dir(Path(ROOT_PATH) / data['path'])
+                    handleFolders.create_dir(Path(handleFiles.ROOT_PATH) / data['path'])
                     logger.info(f'Created directory {data["path"]}')
                     self.send_packet(PacketType.REQUEST, 'null')
                 except Exception as e:
@@ -313,7 +325,7 @@ class ClientHandler(Thread):
                 try:
                     # send client file info
                     logger.debug(f'Sending file info for {Path(ROOT_PATH) / data["path"] }')
-                    file_size, file_name = get_file_info(Path(ROOT_PATH) / data['path'])
+                    file_size, file_name = handleFiles.get_file_info(Path(ROOT_PATH) / data['path'])
                     self.send_packet(PacketType.REQUEST, {
                         'type' : 'download',
                         'size' : file_size,
@@ -335,24 +347,41 @@ class ClientHandler(Thread):
                     })
 
                     logger.debug(f'Finished sending file {Path(ROOT_PATH) / file_name}')
+
+                    ntp_end = self.clientMetrics.getNTPTime()
+
+                    self.clientMetrics.calculateMetrics(type="download", ntpStart=ntp_start, ntpEnd=ntp_end, bytes_transferred=file_size)
+
                 except Exception as e:
-                    self.send_packet(PacketType.INVALID, f'Error sending file {file_name}: {e}')
-                    logger.error(f'Error sending file {file_name}: {e}')
+                    self.send_packet(PacketType.INVALID, f'Error sending file {data["filename"]}: {e}')
+                    logger.error(f'Error sending file {data["filename"]}: {e}')
             
             case _:
                 logger.error(f'Invalid packet subtype received from {self.client_ip}, received subtype {data["type"]}')
 
+    '''
+    Handles the disconnect packet from the client and closes the connection
+    '''
     def handle_disconnect_packet(self, size, data):
         self.stop()
         self.close()
         self.server.disconnect_client(self)
     
+    '''
+    Sets the stop flag to true, stopping the thread
+    '''
     def stop(self):
         self._stop.set()
 
+    '''
+    Returns true if the stop flag is set
+    '''
     def stopped(self):
         return self._stop.is_set()
 
+    '''
+    Closes the client socket
+    '''
     def close(self):
         self.client_socket.close()
 

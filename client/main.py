@@ -27,13 +27,6 @@ class FileSharingApp(FileSharingAppUI):
     def __init__(self, master=None, on_first_object_cb=None):
         super().__init__(master, on_first_object_cb=None)
 
-        # Initialize client and connect to server
-        self.client = Client(SERVER_IP, SERVER_PORT)
-        self.client.connect()
-
-        # Authenticate on startup
-        self.authenticate_client()
-
         # Kill client thread on closing
         self.mainwindow.protocol('WM_DELETE_WINDOW', self.close)
         self.treeview = self.builder.get_object('tv_filetree')
@@ -51,11 +44,11 @@ class FileSharingApp(FileSharingAppUI):
 
         # Use the authenticate method from the Client class
         if not self.client.authenticate(username, password):
-            print("Authentication failed. Closing application.")
+            logger.error("Authentication failed. Closing connection.")
             self.client.disconnect()
-            exit()
         else:
-            print("Authentication successful. You may now access the server.")
+            logger.info("Authentication successful. You may now access the server.")
+
     '''
     get an item's path from a selected item in the treeview that the user is currently clicked on
     '''
@@ -175,6 +168,11 @@ class FileSharingApp(FileSharingAppUI):
         self.connection_status.set(f'Connected to {self.client.server_ip}')
 
         self.client.connect()
+
+        # Authenticate on startup
+        # uncomment when we implement authentication
+        # self.authenticate_client()
+
         self.client.start()
         self.refresh_filetree() 
  
@@ -189,11 +187,5 @@ if __name__ == "__main__":
     try:
         app = FileSharingApp()
         app.run()
-
-        if client.authenticate(username, password):
-            print("Now you can proceed with further actions.")
-        else:
-            print("Login failed. Exiting.")
-
     except KeyboardInterrupt:
         app.client.stop()

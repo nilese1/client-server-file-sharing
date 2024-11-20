@@ -61,6 +61,10 @@ class Client(Thread):
         except Exception as e:
             logger.error(f'Failed to connect to server: {e}')
 
+    # TODO: implement authentication
+    def authenticate(self, username, password):
+        return True
+
     def disconnect(self):
         # no data required for disconnect
         self.send_packet(PacketType.DISCONNECT, 'null')

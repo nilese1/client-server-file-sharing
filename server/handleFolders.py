@@ -2,9 +2,6 @@
 from pathlib import Path
 from pprint import pprint
 
-# put in config file later
-ROOT_PATH = "server_root"
-
 def list_dir(rootPath: Path):
     '''
     Recursively gets all files and directories in given path. 

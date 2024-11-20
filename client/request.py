@@ -110,7 +110,7 @@ def download_file_handler(client, path, progress_bar, save_path):
             packet_type, packet_size, packet_data = client.receive_packet()
             
             # sevrer sends end of file packet
-            if packet_data['data'] != 'null':
+            if packet_data['data'] == 'null':
                 break
 
             decoded_data = base64.b64decode(packet_data['data'].encode('utf-8'))
