@@ -10,6 +10,12 @@ from net import Client
 from net import PacketType
 from request import *
 from send import *
+import socket
+import ssl
+import hashlib
+import json
+import struct
+import base64
 
 
 # get from prompting the user later
@@ -21,6 +27,13 @@ class FileSharingApp(FileSharingAppUI):
     def __init__(self, master=None, on_first_object_cb=None):
         super().__init__(master, on_first_object_cb=None)
 
+        # Initialize client and connect to server
+        self.client = Client(SERVER_IP, SERVER_PORT)
+        self.client.connect()
+
+        # Authenticate on startup
+        self.authenticate_client()
+
         # Kill client thread on closing
         self.mainwindow.protocol('WM_DELETE_WINDOW', self.close)
         self.treeview = self.builder.get_object('tv_filetree')
@@ -31,7 +44,18 @@ class FileSharingApp(FileSharingAppUI):
         if self.treeview.selection():
             self.treeview.selection_remove(self.treeview.focus())
 
+    def authenticate_client(self):
+        """Prompt for user credentials and authenticate with the server."""
+        username = input("Enter username: ")
+        password = input("Enter password: ")
 
+        # Use the authenticate method from the Client class
+        if not self.client.authenticate(username, password):
+            print("Authentication failed. Closing application.")
+            self.client.disconnect()
+            exit()
+        else:
+            print("Authentication successful. You may now access the server.")
     '''
     get an item's path from a selected item in the treeview that the user is currently clicked on
     '''
@@ -164,5 +188,11 @@ if __name__ == "__main__":
     try:
         app = FileSharingApp()
         app.run()
+
+        if client.authenticate(username, password):
+            print("Now you can proceed with further actions.")
+        else:
+            print("Login failed. Exiting.")
+
     except KeyboardInterrupt:
         app.client.stop()
