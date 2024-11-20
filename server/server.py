@@ -13,6 +13,7 @@ import base64
 import hashlib
 import os
 import ssl
+from metrics import Metrics
 
 # Load or define users and password hashes
 user_db = {
@@ -40,23 +41,13 @@ console_handler.setFormatter(logging.Formatter('[%(asctime)s][%(levelname)s]: %(
 logger.addHandler(console_handler)
 
 
-BUFFER_SIZE = 4096
+
+
+BUFFER_SIZE = 1024
 MAX_CLIENTS = 10
 # read from config file later
 HOST = '127.0.0.1'
 PORT = 30000
-
-# SSL setup for secure connections
-context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-context.load_cert_chain(certfile="server.crt", keyfile="server.key")  # SSL certificate and key
-
-# Challenge generation for secure authentication
-def generate_challenge():
-    return os.urandom(16).hex()
-
-def verify_password(challenge, password_hash, received_hash):
-    hash_object = hashlib.sha256((password_hash + challenge).encode())
-    return hash_object.hexdigest() == received_hash
 
 # So multiple clients can download the same file at the same time
 # or download a file currently being uploaded
@@ -85,7 +76,6 @@ class Server:
             while True:
                 try:
                     client_socket, addr = self.server_socket.accept()
-                    secure_socket = context.wrap_socket(client_socket, server_side=True)
                     logger.info(f'Client from {addr} connected')
                     self.connect_new_client(client_socket, addr)
                 except socket.timeout:
@@ -100,7 +90,6 @@ class Server:
     def connect_new_client(self, client_socket, ip_addr):
         client_handler = ClientHandler(client_socket, ip_addr, self)
         client_handler.start() # check ClientHandler.run()
-
 
         self.connected_clients.append(client_handler)
 
@@ -127,10 +116,18 @@ class ClientHandler(Thread):
 
         self.client_socket.settimeout(1.0)
 
+        self.clientMetrics = Metrics(client_ip)
+
+    def encode_data(self, data):
+        return json.dumps(data).encode('utf-8')
+
+    def decode_data(self, data):
+        return json.loads(data.decode('utf-8'))
+
     # Given a dict, converts it to a binary json
     def create_packet(self, packet_type, data):
         # packet structure: [id, packet_type, data]
-        data_bytes = base64.b64encode(json.dumps(data).encode('utf-8'))
+        data_bytes = self.encode_data(data)
         header = struct.pack('!BI', packet_type.value, len(data_bytes))
 
         return header + data_bytes
@@ -144,14 +141,20 @@ class ClientHandler(Thread):
             logger.error(f'Unable to send packet: {e}')
 
     def receive_packet(self):
-        try:
-            # Read the packet header to get packet type and size
-            packet_header = self.client_socket.recv(5)
-            if len(packet_header) < 5:
-                return None, None, None  # Incomplete header, return None
+        # Read packet header
+        packet_header = self.client_socket.recv(5)
+        if len(packet_header) < 5:
+            return None
+        
+        # make packet readable
+        packet_type, packet_size = struct.unpack('!BI', packet_header)
+        packet_bytes = self.client_socket.recv(packet_size)
 
-            # Unpack the header to get the packet type and size of the data payload
-            packet_type, packet_size = struct.unpack('!BI', packet_header)
+        # in case the packet is split into multiple packets
+        while len(packet_bytes) < packet_size:
+            packet_bytes += self.client_socket.recv(packet_size - len(packet_bytes))
+
+        packet_data = self.decode_data(packet_bytes)
 
             # Receive the actual data payload based on the packet size
             packet_data_raw = self.client_socket.recv(packet_size)
@@ -253,12 +256,21 @@ class ClientHandler(Thread):
 
                         while packet_data['data'] != 'null':
                             packet_type, packet_size, packet_data = self.receive_packet()
+
+                            # client sends end of file packet
+                            if packet_data['data'] == 'null':
+                                break
+
                             decoded_data = base64.b64decode(packet_data['data'].encode('utf-8'))
                             file.write(decoded_data)
                             total_bytes_received += len(decoded_data)
                     
                     # send confirmation packet
                     self.send_packet(PacketType.SEND, 'null')
+
+                    ntp_end = self.clientMetrics.getNTPTime()
+
+                    self.clientMetrics.calculateMetrics(type="upload", ntpStart=ntp_start, ntpEnd=ntp_end, bytes_transferred=total_bytes_received)
 
                     logger.info(f'Finished uploading file {data["path"]}')
                 except Exception as e:
@@ -307,6 +319,8 @@ class ClientHandler(Thread):
                         'size' : file_size,
                         'filename' : file_name
                     })
+
+                    ntp_start = data['ntpStart'] # initial download packet will have ntpStart time
 
                     logger.debug(f'Sending file {Path(ROOT_PATH) / data["path"]}')
                     with open(Path(ROOT_PATH) / data['path'], 'rb') as file:

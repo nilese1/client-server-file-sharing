@@ -1,5 +1,20 @@
 from net import *
 import base64
+import ntplib
+
+
+'''
+For performance metrics. Send ntptime with download and upload requests
+'''
+def getNTPTime():
+    ntpClient = ntplib.NTPClient()
+    try:
+        ntp_res = ntpClient.request("0.pool.ntp.org", version=3)
+        return ntp_res.tx_time
+    except Exception as e:
+        print(f"Error getting NTP time, returning -1")
+        return -1
+
 
 # Sends a file to the client when the client requests a download
 def get_file_info(path: Path):
@@ -22,7 +37,8 @@ def upload_file_handler(client, file_to_upload, destination_path):
         'type' : 'upload',
         'size' : file_size,
         'filename' : file_name,
-        'path' : destination_path
+        'path' : destination_path,
+        'ntpStart': getNTPTime()
     })
 
     # server will send a confirmation packet to accept upload

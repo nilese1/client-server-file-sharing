@@ -176,6 +176,7 @@ class FileSharingApp(FileSharingAppUI):
 
         self.client.connect()
         self.client.start()
+        self.refresh_filetree() 
  
     def close(self):
         if self.client:

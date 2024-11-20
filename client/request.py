@@ -1,11 +1,24 @@
 from net import *
 import asyncio
 import base64
+import ntplib
 
 '''
 This file will be used to send packets of the request 
 type: getting the filetree, downloading files etc.
 '''
+
+'''
+For performance metrics. Send ntptime with download and upload requests
+'''
+def getNTPTime():
+    ntpClient = ntplib.NTPClient()
+    try:
+        ntp_res = ntpClient.request("0.pool.ntp.org", version=3)
+        return ntp_res.tx_time
+    except Exception as e:
+        print(f"Error getting NTP time, returning -1")
+        return -1
 
 
 '''
@@ -77,7 +90,8 @@ def download_file_handler(client, path, progress_bar, save_path):
     logger.debug(f'Requesting to download file {path}')
     client.send_packet(PacketType.REQUEST, {
         'type' : 'download',
-        'path' : path
+        'path' : path,
+        "ntpStart": getNTPTime()
     })
 
     type, data = wait_for_confirmation(client)
@@ -92,9 +106,13 @@ def download_file_handler(client, path, progress_bar, save_path):
         packet_data = {'data' : 'not null'}
 
         logger.debug(f'Starting to download file {data["filename"]}')
-        # server sends null packet to signify end of file
-        while packet_data['data'] != 'null':
-            packet_type, packet_size, packet_data = client.receive_packet() 
+        while True:
+            packet_type, packet_size, packet_data = client.receive_packet()
+            
+            # sevrer sends end of file packet
+            if packet_data['data'] != 'null':
+                break
+
             decoded_data = base64.b64decode(packet_data['data'].encode('utf-8'))
             total_bytes_received += len(decoded_data)
             file.write(decoded_data)
@@ -103,3 +121,5 @@ def download_file_handler(client, path, progress_bar, save_path):
             progress_bar.set(total_bytes_received/total_file_size * 100 * 2)
         
     logger.debug(f'Finished downloading file {data["filename"]}')
+
+
