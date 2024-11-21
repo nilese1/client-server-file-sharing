@@ -15,3 +15,5 @@
 
 # don't ignoresample files so empty directories are tracked
 !**/sample.txt
+
+**/.idea/

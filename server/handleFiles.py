@@ -10,6 +10,8 @@ BUFFER_SIZE = 4096
 def delete_file(path: Path):
     if path.exists() and path.is_file():
         path.unlink()
+    else:
+        raise FileNotFoundError(f'File {path} does not exist or is not a file')
 
 # must be able to create different types of files? 
 def create_file(path: Path, data):

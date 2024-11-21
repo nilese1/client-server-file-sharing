@@ -31,7 +31,9 @@ def get_filetree(client):
     })
 
     data = {'data' : 'null'}
-    _, _, data = client.receive_packet()
+    packet_type, _, data = client.receive_packet()
+    if packet_type == PacketType.INVALID:
+        raise Exception(data)
 
     return data['data']
     
@@ -65,9 +67,9 @@ def delete_file_handler(client, path):
         'path' : path
     })
 
-    type, data = wait_for_confirmation(client)
+    packet_type, data = wait_for_confirmation(client)
 
-    if type == PacketType.INVALID:
+    if packet_type == PacketType.INVALID:
         raise Exception(data) # data will contain the error message
 
     return data
@@ -94,9 +96,9 @@ def download_file_handler(client, path, progress_bar, save_path):
         "ntpStart": getNTPTime()
     })
 
-    type, data = wait_for_confirmation(client)
+    packet_type, data = wait_for_confirmation(client)
 
-    if type == PacketType.INVALID:
+    if packet_type == PacketType.INVALID.value:
         raise Exception(data) # data will contain the error message
 
     with open(Path(save_path) / data['filename'], 'wb') as file:

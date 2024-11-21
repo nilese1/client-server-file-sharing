@@ -3,7 +3,10 @@ import pathlib
 import tkinter as tk
 from tkinter import simpledialog
 from tkinter import filedialog
+from tkinter import messagebox
 import pygubu
+
+
 from ui.srcui import FileSharingAppUI
 from enum import Enum
 from net import Client
@@ -31,9 +34,9 @@ class FileSharingApp(FileSharingAppUI):
         self.mainwindow.protocol('WM_DELETE_WINDOW', self.close)
         self.treeview = self.builder.get_object('tv_filetree')
         self.client = None
-        self.treeview.bind('<Button-3>', self.deselect_item_on_empty_click)
+        self.treeview.bind('<Button-3>', self.deselect_item_on_right_click)
 
-    def deselect_item_on_empty_click(self, event):
+    def deselect_item_on_right_click(self, event):
         if self.treeview.selection():
             self.treeview.selection_remove(self.treeview.focus())
 
@@ -43,11 +46,15 @@ class FileSharingApp(FileSharingAppUI):
         password = input("Enter password: ")
 
         # Use the authenticate method from the Client class
-        if not self.client.authenticate(username, password):
-            logger.error("Authentication failed. Closing connection.")
-            self.client.disconnect()
-        else:
+        try:
+            self.client.authenticate(username, password)
             logger.info("Authentication successful. You may now access the server.")
+
+            # client.authenticate not implemented
+
+        except Exception as e:
+            self.handle_error(e)
+            self.client.disconnect()
 
     '''
     get an item's path from a selected item in the treeview that the user is currently clicked on
@@ -55,7 +62,7 @@ class FileSharingApp(FileSharingAppUI):
     def get_item_path(self, item):
         if not item:
             return ''
-        
+        # No possible error situations that aren't already handled
         selected_item = self.treeview.item(item)
         item_path = selected_item["text"]
         parent_item = self.treeview.parent(item)
@@ -65,14 +72,16 @@ class FileSharingApp(FileSharingAppUI):
         return item_path
 
     def refresh_filetree(self):
-        # relay error to user later
         if not self.client:
             return
 
-        filetree = get_filetree(self.client)
-        self.treeview.delete(*self.treeview.get_children())
+        try:
+            filetree = get_filetree(self.client)
+            self.treeview.delete(*self.treeview.get_children())
 
-        load_filetree(self.treeview, filetree)
+            load_filetree(self.treeview, filetree)
+        except Exception as e:
+            self.handle_error(e)
 
 
     def callback(self, event=None):
@@ -95,8 +104,7 @@ class FileSharingApp(FileSharingAppUI):
             create_directory_handler(self.client, new_dir)
             self.refresh_filetree()
         except Exception as e:
-            # TODO: handle error
-            pass
+            self.handle_error(e)
 
     def delete_file(self):
         if not self.client:
@@ -111,8 +119,7 @@ class FileSharingApp(FileSharingAppUI):
             delete_file_handler(self.client, item_path)
             self.refresh_filetree()
         except Exception as e:
-            # TODO: handle error
-            pass
+            self.handle_error(e)
 
     def download_file(self):
         if not self.client:
@@ -130,8 +137,7 @@ class FileSharingApp(FileSharingAppUI):
         try:
             download_file_handler(self.client, item_path, self.download_completion, folder_selected)
         except Exception as e:
-            # TODO: handle error
-            logger.error(f'Error downloading file {item_path}: {e}')
+            self.handle_error(e)
 
 
     def upload_file(self):
@@ -153,8 +159,8 @@ class FileSharingApp(FileSharingAppUI):
             upload_file_handler(self.client, file_to_upload, item_path)
             self.refresh_filetree()
         except Exception as e:
-            # TODO: handle error
             logger.error(f'Error uploading file {file_to_upload}: {e}')
+            self.handle_error(e)
 
 
     def prompt_server_connection(self):
@@ -182,6 +188,10 @@ class FileSharingApp(FileSharingAppUI):
 
         self.mainwindow.destroy()
 
+    def handle_error(self, message):
+        error_message = messagebox.showerror("ERROR", message)
+
+        logger.error(message)
 
 if __name__ == "__main__":
     try:

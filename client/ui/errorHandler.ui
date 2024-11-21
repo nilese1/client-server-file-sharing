@@ -6,7 +6,6 @@
   </project>
   <object class="tk.Toplevel" id="toplevel4">
     <property name="background">#d8d8d8</property>
-    <property name="geometry">450x200</property>
     <property name="height">1</property>
     <property name="highlightbackground">#ff1c1c</property>
     <property name="highlightcolor">#2b52f0</property>

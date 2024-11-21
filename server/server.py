@@ -253,16 +253,19 @@ class ClientHandler(Thread):
                 try:
                     logger.info(f'Received upload request for {data["path"]}')
 
-                    packet_data = {'data' : 'not null'}
                     total_bytes_received = 0
-                    total_file_size = data['size']
                     if data['path'] == '':
                         data['path'] = data['filename']
 
                     ntp_start = data['ntpStart'] # initial upload packet will have ntpStart time
                     
                     # receive file data
-                    with open(Path(ROOT_PATH) / data['path'], 'wb') as file:
+                    path = Path(ROOT_PATH) / data['path']
+                    if path.exists():
+                        # !!!DO NOT CHANGE THE FSTRING OF EXCEPTION!!!
+                        # Used for error identification on client side
+                        raise Exception(f'FILENAME_EXISTS')
+                    with open(path, 'wb') as file:
                         # send confirmation packet if it is ok to upload
                         self.send_packet(PacketType.SEND, 'null')
 
@@ -287,7 +290,7 @@ class ClientHandler(Thread):
                     logger.info(f'Finished uploading file {data["path"]}')
                 except Exception as e:
                     logger.error(f'Error uploading file {data["filename"]}: {e}')
-                    self.send_packet(PacketType.INVALID, f'Error uploading file {data["filename"]}: {e}')
+                    self.send_packet(PacketType.INVALID, str(e))
 
             case _:
                 logger.error(f'Invalid packet subtype received from {self.client_ip}, received subtype {data["type"]}')
@@ -295,11 +298,15 @@ class ClientHandler(Thread):
     def handle_request_packet(self, size, data):
         match data['type']:
             case 'filetree':
-                filetree = handleFolders.list_dir(Path(handleFiles.ROOT_PATH))
-                self.send_packet(PacketType.SEND, {
-                    'type' : 'filetree',
-                    'data' : filetree
-                })
+                try:
+                    filetree = handleFolders.list_dir(Path(handleFiles.ROOT_PATH))
+                    self.send_packet(PacketType.SEND, {
+                        'type' : 'filetree',
+                        'data' : filetree
+                    })
+                except Exception as e:
+                    logger.error(f'Error handling file tree: {e}')
+                    self.send_packet(PacketType.INVALID, f'SERVER: Error handling file tree: {e}')
             
             case 'delete':
                 logger.debug(f'Deleting file {Path(handleFiles.ROOT_PATH) / data["path"]}')
@@ -308,8 +315,8 @@ class ClientHandler(Thread):
                     logger.info(f'Deleted file {data["path"]}')
                     self.send_packet(PacketType.REQUEST, 'null')
                 except Exception as e:
-                    self.send_packet(PacketType.INVALID, f'Error deleting file {data["path"]}: {e}')
                     logger.error(f'Error deleting file {data["path"]}: {e}')
+                    self.send_packet(PacketType.INVALID, f'Error deleting file {data["path"]}: {e}')
 
             case 'create_dir':
                 try:
@@ -324,18 +331,22 @@ class ClientHandler(Thread):
                 # maybe refactor this to be a function, had trouble with circular imports
                 try:
                     # send client file info
-                    logger.debug(f'Sending file info for {Path(ROOT_PATH) / data["path"] }')
-                    file_size, file_name = handleFiles.get_file_info(Path(ROOT_PATH) / data['path'])
+                    path = Path(ROOT_PATH) / data["path"]
+                    logger.debug(f'Sending file info for {path}')
+                    file_size, file_name = handleFiles.get_file_info(path)
+                    if not path.exists():
+                        raise FileNotFoundError(f'File {data['path']} does not exist')
                     self.send_packet(PacketType.REQUEST, {
                         'type' : 'download',
                         'size' : file_size,
                         'filename' : file_name
                     })
 
+
                     ntp_start = data['ntpStart'] # initial download packet will have ntpStart time
 
-                    logger.debug(f'Sending file {Path(ROOT_PATH) / data["path"]}')
-                    with open(Path(ROOT_PATH) / data['path'], 'rb') as file:
+                    logger.debug(f'Sending file {path}')
+                    with open(path, 'rb') as file:
                         while data := file.read(BUFFER_SIZE):
                             self.send_packet(PacketType.SEND, {
                                 'data' : base64.b64encode(data).decode('utf-8')
@@ -353,11 +364,12 @@ class ClientHandler(Thread):
                     self.clientMetrics.calculateMetrics(type="download", ntpStart=ntp_start, ntpEnd=ntp_end, bytes_transferred=file_size)
 
                 except Exception as e:
-                    self.send_packet(PacketType.INVALID, f'Error sending file {data["filename"]}: {e}')
-                    logger.error(f'Error sending file {data["filename"]}: {e}')
+                    logger.error(e)
+                    self.send_packet(PacketType.INVALID, str(e))
             
             case _:
                 logger.error(f'Invalid packet subtype received from {self.client_ip}, received subtype {data["type"]}')
+                self.send_packet(PacketType.INVALID, f'Invalid packet subtype received: {data["type"]}')
 
     '''
     Handles the disconnect packet from the client and closes the connection

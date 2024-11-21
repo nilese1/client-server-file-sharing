@@ -1,6 +1,8 @@
 from net import *
 import base64
 import ntplib
+from tkinter import simpledialog
+import pathlib
 
 
 '''
@@ -42,10 +44,14 @@ def upload_file_handler(client, file_to_upload, destination_path):
     })
 
     # server will send a confirmation packet to accept upload
-    type, _, data = client.receive_packet()
+    packet_type, _, data = client.receive_packet()
 
-    if type == PacketType.INVALID:
+    if packet_type == PacketType.INVALID.value and data != "FILENAME_EXISTS":
         raise Exception(data)
+    elif packet_type == PacketType.INVALID.value and data == "FILENAME_EXISTS":
+        new_name = rename_file(file_name)
+        upload_file_handler(client, file_to_upload, str(Path(destination_path).with_name(new_name)))
+        return
 
     # begin sending file (plenty of consent)
     with open(file_to_upload, 'rb') as file:
@@ -60,11 +66,16 @@ def upload_file_handler(client, file_to_upload, destination_path):
     })
 
     # wait for server to finish processing
-    type, _, data = client.receive_packet()
+    packet_type, _, data = client.receive_packet()
 
-    if type == PacketType.INVALID:
+    if packet_type == PacketType.INVALID:
         raise Exception(data)
 
     logger.info(f'Finished uploading file {file_to_upload} to {destination_path}')
 
+def rename_file(old_filename):
+    input_box = simpledialog.askstring("File Already Exists", "Please enter a different file name")
+
+
+    return input_box + Path(old_filename).suffix
     
