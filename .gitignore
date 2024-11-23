@@ -7,6 +7,9 @@
 # ignore all log files
 **/*.log
 
+# ignore excel files
+**/*.xlsx
+
 # server file storage
 /server/server_root/*
 # still include the server_root directory itself
