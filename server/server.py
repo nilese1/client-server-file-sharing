@@ -31,7 +31,7 @@ class PacketType(Enum):
 # put in config file later
 ROOT_PATH = "server_root"
 
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
 logging.basicConfig(filename=Path(f'logs/log_{datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")}.log'), level=LOG_LEVEL,
                     format='[%(asctime)s][%(levelname)s]: %(message)s', filemode='w')
 logger = logging.getLogger(__name__)

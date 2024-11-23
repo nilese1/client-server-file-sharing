@@ -135,10 +135,9 @@ class FileSharingApp(FileSharingAppUI):
             return
         
         try:
-            download_file_handler(self.client, item_path, self.download_completion, folder_selected)
+            download_file(self.client, item_path, folder_selected, self.download_completion, self.download_status, self.mainwindow)
         except Exception as e:
             self.handle_error(e)
-
 
     def upload_file(self):
         if not self.client:
@@ -156,7 +155,7 @@ class FileSharingApp(FileSharingAppUI):
             item_path = self.get_item_path(item) + "/" + Path(file_to_upload).name
 
         try:
-            upload_file_handler(self.client, file_to_upload, item_path)
+            upload_file(self.client, file_to_upload, item_path, self.download_completion, self.download_status, self.mainwindow)
             self.refresh_filetree()
         except Exception as e:
             logger.error(f'Error uploading file {file_to_upload}: {e}')

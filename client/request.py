@@ -2,6 +2,7 @@ from net import *
 import asyncio
 import base64
 import ntplib
+import tkinter as tk
 
 '''
 This file will be used to send packets of the request 
@@ -87,8 +88,33 @@ def create_directory_handler(client, path):
 
     return data
 
+# could encapsulate this in a class
+total_bytes_received = 0
+total_file_size = 1
 
-def download_file_handler(client, path, progress_bar, save_path):
+'''
+Schedules a download status check on a separate thread
+'''
+def schedule_download_status_check(client, t: Thread, file_name, progress_bar, download_status, root: tk.Tk):
+    root.after(100, check_download_status, client, t, file_name, progress_bar, download_status, root)
+    
+
+'''
+Checks the download status of a file have to do it this way because 
+tkinter is very finnicky about threading
+'''
+def check_download_status(client, t: Thread, file_name, progress_bar, download_status, root: tk.Tk):
+    if not t.is_alive():
+        download_status.set(f'Finished downloading {file_name}')
+        progress_bar.set(200)
+        logger.info(f'WE ARE DONE')
+    else:
+        progress_bar.set(total_bytes_received/total_file_size * 100 * 2)
+        download_status.set(f'Downloading {file_name}... {round(total_bytes_received / total_file_size * 100, 2)}%')
+        schedule_download_status_check(client, t, file_name, progress_bar, download_status, root)
+        logger.info(f'HIHIHIHHIHI')
+
+def download_file_handler(client, path, save_path, progress_bar, download_status):
     logger.debug(f'Requesting to download file {path}')
     client.send_packet(PacketType.REQUEST, {
         'type' : 'download',
@@ -102,9 +128,10 @@ def download_file_handler(client, path, progress_bar, save_path):
         raise Exception(data) # data will contain the error message
 
     with open(Path(save_path) / data['filename'], 'wb') as file:
+        global total_bytes_received
+        global total_file_size
         total_bytes_received = 0
         total_file_size = data['size']
-        progress_bar.set(0)
         packet_data = {'data' : 'not null'}
 
         logger.debug(f'Starting to download file {data["filename"]}')
@@ -118,10 +145,18 @@ def download_file_handler(client, path, progress_bar, save_path):
             decoded_data = base64.b64decode(packet_data['data'].encode('utf-8'))
             total_bytes_received += len(decoded_data)
             file.write(decoded_data)
-            # not sure why we need to multiply by 2 here, but it works
-            # also, put on separate thread later so it actually updates in real time
-            progress_bar.set(total_bytes_received/total_file_size * 100 * 2)
-        
-    logger.debug(f'Finished downloading file {data["filename"]}')
+          
+    logger.info(f'Finished downloading file {data["filename"]}')
+
+
+def download_file(client, path, save_path, progress_bar, download_status, root: tk.Tk):
+    file_name = Path(path).name
+
+    progress_bar.set(0)
+    download_status.set(f'Downloading... 0%')
+
+    download_thread = threading.Thread(target=download_file_handler, args=(client, path, save_path, progress_bar, download_status))
+    download_thread.start()
+    check_download_status(client, download_thread, file_name, progress_bar, download_status, root)
 
 

@@ -17,7 +17,7 @@ class PacketType(Enum):
     INVALID = 5 # used for errors, changed from -1 to 5 because apparently struct only accepts unsigned ints
 
 
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
 logger = logging.getLogger(__name__)
 logger.info(f'Beginning log of {__name__}')
 logging.basicConfig(filename=Path(f'logs/log_{datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")}.log'), level=LOG_LEVEL,
