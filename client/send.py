@@ -86,7 +86,6 @@ def upload_file_handler(client, file_to_upload, destination_path, progress_bar, 
             raise Exception(data)
         elif packet_type == PacketType.INVALID.value and data == "FILENAME_EXISTS":
             new_name = rename_file(file_name)
-            logger.info(f'SOMETHING IS WRONG')
             destination_path = Path(destination_path).with_name(new_name)
             destination_path = str(destination_path)
         # packet type is valid, so we can break

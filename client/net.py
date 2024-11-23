@@ -8,6 +8,7 @@ from pathlib import Path
 import datetime
 import json
 import base64
+import hashlib
 
 class PacketType(Enum):
     LOGIN = 1
@@ -29,15 +30,14 @@ console_handler.setLevel(LOG_LEVEL)
 console_handler.setFormatter(logging.Formatter('[%(asctime)s][%(levelname)s]: %(message)s'))
 logger.addHandler(console_handler)
 
+BUFFER_SIZE = 4096
+
 
 '''
 The logging and error handling for client is done in this file, 
 but in the future it would be smarter to handle it in main so we 
 can relay errors to the ui easier 
 '''
-
-BUFFER_SIZE = 1024
-
 class Client(Thread):
     def __init__(self, server_ip, server_port):
         Thread.__init__(self)
@@ -55,15 +55,23 @@ class Client(Thread):
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
             logger.info(f'Connected to server at {self.server_ip}:{self.server_port}')
-
-            # send login information later if doing extra credit
-            self.send_packet(PacketType.LOGIN, 'null')
         except Exception as e:
             logger.error(f'Failed to connect to server: {e}')
 
     # TODO: implement authentication
     def authenticate(self, username, password):
-        return True
+        # plaintext password is bad, but we'll fix it later
+        self.send_packet(PacketType.LOGIN, {
+            'username' : username,
+            'password' : hashlib.sha256(password.encode('utf-8')).hexdigest()
+        })
+
+        # wait for server to confirm
+        packet_type, _, data = self.receive_packet()
+        if packet_type == PacketType.INVALID.value:
+            raise Exception(data)
+        
+        # if no error, we can continue
 
     def disconnect(self):
         # no data required for disconnect

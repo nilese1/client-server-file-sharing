@@ -239,6 +239,11 @@ class ClientHandler(Thread):
             self.close()
 
     def handle_packet(self, packet_type, packet_size, packet_data):
+        if not self.authenticated and (packet_type != PacketType.LOGIN.value and packet_type != PacketType.DISCONNECT.value):
+            logger.error(f'Client {self.client_ip} is not authenticated, skipping packet')
+            self.send_packet(PacketType.INVALID, 'Client is not authenticated')
+            return
+
         match packet_type:
             case PacketType.LOGIN.value:
                 self.handle_login_packet(packet_data)
@@ -255,19 +260,17 @@ class ClientHandler(Thread):
         logger.error(f"Client from {self.client_ip} has sent an invalid packet.")
 
     def handle_login_packet(self, data):
-        pass
-        # uncomment when we implement authentication
-        # username = data.get("username")
-        # received_password_hash = data.get("password")
-        # stored_password_hash = user_db.get(username)
+        username = data.get("username")
+        received_password_hash = data.get("password")
+        stored_password_hash = user_db.get(username)
 
-        # if stored_password_hash and received_password_hash == stored_password_hash:
-        #     self.authenticated = True
-        #     self.send_packet(PacketType.LOGIN, {"status": "success"})
-        #     logger.info(f"Client {self.client_ip} authenticated successfully.")
-        # else:
-        #     self.send_packet(PacketType.INVALID, {"error": "Invalid credentials"})
-        #     logger.info(f"Client {self.client_ip} failed authentication.")
+        if stored_password_hash and received_password_hash == stored_password_hash:
+            self.authenticated = True
+            self.send_packet(PacketType.LOGIN, {"status": "success"})
+            logger.info(f"Client {self.client_ip} authenticated successfully.")
+        else:
+            self.send_packet(PacketType.INVALID, "Invalid credentials")
+            logger.info(f"Client {self.client_ip} failed authentication.")
 
     def handle_send_packet(self, size, data):
         # put a match statement here so we can handle different types of sends (even though we never will)
@@ -361,7 +364,10 @@ class ClientHandler(Thread):
                     f'Deleting file {Path(handleFiles.ROOT_PATH) / data["path"]}'
                 )
                 try:
-                    handleFiles.delete_file(Path(handleFiles.ROOT_PATH) / data["path"])
+                    if (Path(handleFiles.ROOT_PATH) / data["path"]).is_dir():
+                        handleFolders.delete_dir(Path(handleFiles.ROOT_PATH) / data["path"])
+                    else:
+                        handleFiles.delete_file(Path(handleFiles.ROOT_PATH) / data["path"])
                     logger.info(f'Deleted file {data["path"]}')
                     self.send_packet(PacketType.REQUEST, "null")
                 except Exception as e:

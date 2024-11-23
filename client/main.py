@@ -5,7 +5,7 @@ from tkinter import simpledialog
 from tkinter import filedialog
 from tkinter import messagebox
 import pygubu
-
+from ui.loginui import LoginDialog
 
 from ui.srcui import FileSharingAppUI
 from enum import Enum
@@ -41,20 +41,28 @@ class FileSharingApp(FileSharingAppUI):
             self.treeview.selection_remove(item)
 
     def authenticate_client(self):
-        """Prompt for user credentials and authenticate with the server."""
-        username = input("Enter username: ")
-        password = input("Enter password: ")
-
+        authenticated = False
         # Use the authenticate method from the Client class
-        try:
-            self.client.authenticate(username, password)
-            logger.info("Authentication successful. You may now access the server.")
+        while not authenticated:
+            try:
+                # get username and password from user
+                dialog = LoginDialog(self.mainwindow)
 
-            # client.authenticate not implemented
+                # user cancelled
+                if dialog.result is None:
+                    self.client.disconnect()
+                    self.connection_status.set(f'Disconnected from {self.client.server_ip}')
+                    return False
 
-        except Exception as e:
-            self.handle_error(e)
-            self.client.disconnect()
+                username, password = dialog.result
+                self.client.authenticate(username, password)
+                logger.info("Authentication successful. You may now access the server.")
+                authenticated = True
+
+            except Exception as e:
+                self.handle_error(e)
+
+        return True
 
     '''
     get an item's path from a selected item in the treeview that the user is currently clicked on
@@ -93,6 +101,7 @@ class FileSharingApp(FileSharingAppUI):
 
         new_dir = simpledialog.askstring("Input", "Enter the new directory name:", parent=self.mainwindow)
         item = self.treeview.focus()
+        logger.info(f'Item is {item}')
         # user cancelled
         if not new_dir:
             return
@@ -119,7 +128,6 @@ class FileSharingApp(FileSharingAppUI):
             delete_file_handler(self.client, item_path)
             self.refresh_filetree()
         except Exception as e:
-            logger.error(f'HIHHIHIHI')
             self.handle_error(e)
 
     def download_file(self):
@@ -154,6 +162,8 @@ class FileSharingApp(FileSharingAppUI):
         
         if item:
             item_path = self.get_item_path(item) + "/" + Path(file_to_upload).name
+        else:
+            item_path = Path(file_to_upload).name
 
         try:
             upload_file(self.client, file_to_upload, item_path, self.download_completion, self.download_status, self.mainwindow)
@@ -166,26 +176,37 @@ class FileSharingApp(FileSharingAppUI):
         # ask client if they'd like to disconnect later
         if self.client:
             return
-        
-        # TEST
-        self.client = Client(SERVER_IP, SERVER_PORT)
-        # Show connection status to ui
-        self.connection_status.set(f'Connected to {self.client.server_ip}')
 
-        self.client.connect()
+        try:
+            self.client = Client(SERVER_IP, SERVER_PORT)
 
-        # Authenticate on startup
-        # uncomment when we implement authentication
-        # self.authenticate_client()
+            self.client.connect()
+            # Show connection status to ui
+            self.connection_status.set(f'Waiting for authentication from {self.client.server_ip}')
 
-        self.client.start()
-        self.refresh_filetree() 
+            # Authenticate on startup
+            authenticated = self.authenticate_client()
+
+            # user cancelled authentication
+            if not authenticated:
+                self.client = None
+                self.client.disconnect()
+                return
+
+            self.connection_status.set(f'Connected to {self.client.server_ip}')
+
+            self.client.start()
+            self.refresh_filetree() 
+        except Exception as e:
+            self.connection_status.set(f'Failed to connect to {self.client.server_ip}')
+            self.client = None
+            self.handle_error(e)
  
     def close(self):
+        self.mainwindow.destroy()
+
         if self.client:
             self.client.disconnect()
-
-        self.mainwindow.destroy()
 
     def handle_error(self, message):
         error_message = messagebox.showerror("ERROR", message)
