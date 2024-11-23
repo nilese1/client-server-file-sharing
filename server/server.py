@@ -277,15 +277,22 @@ class ClientHandler(Thread):
                     logger.info(f'Received upload request for {data["path"]}')
 
                     total_bytes_received = 0
+                    parent_dir = Path(ROOT_PATH) / Path(data["path"]).parent
                     if data["path"] == "":
                         data["path"] = data["filename"]
+                    # if the parent directory is not a directory, we need to change the path
+                    elif not parent_dir.is_dir():
+                        data["path"] = parent_dir.parent / data["filename"]
+                    elif parent_dir.is_dir():
+                        data["path"] = parent_dir / data["filename"]
 
                     ntp_start = data[
                         "ntpStart"
                     ]  # initial upload packet will have ntpStart time
 
                     # receive file data
-                    path = Path(ROOT_PATH) / data["path"]
+                    path = Path(data["path"])
+
                     if path.exists():
                         # !!!DO NOT CHANGE THE FSTRING OF EXCEPTION!!!
                         # Used for error identification on client side

@@ -37,8 +37,8 @@ class FileSharingApp(FileSharingAppUI):
         self.treeview.bind('<Button-3>', self.deselect_item_on_right_click)
 
     def deselect_item_on_right_click(self, event):
-        if self.treeview.selection():
-            self.treeview.selection_remove(self.treeview.focus())
+        for item in self.treeview.selection():
+            self.treeview.selection_remove(item)
 
     def authenticate_client(self):
         """Prompt for user credentials and authenticate with the server."""
@@ -119,6 +119,7 @@ class FileSharingApp(FileSharingAppUI):
             delete_file_handler(self.client, item_path)
             self.refresh_filetree()
         except Exception as e:
+            logger.error(f'HIHHIHIHI')
             self.handle_error(e)
 
     def download_file(self):
@@ -160,7 +161,6 @@ class FileSharingApp(FileSharingAppUI):
         except Exception as e:
             logger.error(f'Error uploading file {file_to_upload}: {e}')
             self.handle_error(e)
-
 
     def prompt_server_connection(self):
         # ask client if they'd like to disconnect later

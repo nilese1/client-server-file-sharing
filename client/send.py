@@ -65,28 +65,34 @@ def upload_file_handler(client, file_to_upload, destination_path, progress_bar, 
 
     logger.info(f'Uploading file {file_to_upload} to {destination_path}')
 
-    file_size, file_name = get_file_info(Path(file_to_upload))
+    # send upload request until server confirms
+    while True:
+        file_size, file_name = get_file_info(Path(file_to_upload))
 
-    total_file_size = file_size
+        total_file_size = file_size
 
-    client.send_packet(PacketType.SEND, {
-        'type' : 'upload',
-        'size' : file_size,
-        'filename' : file_name,
-        'path' : destination_path,
-        'ntpStart': getNTPTime()
-    })
+        client.send_packet(PacketType.SEND, {
+            'type' : 'upload',
+            'size' : file_size,
+            'filename' : Path(destination_path).name,
+            'path' : destination_path,
+            'ntpStart': getNTPTime()
+        })
 
-    # server will send a confirmation packet to accept upload
-    packet_type, _, data = client.receive_packet()
+        # server will send a confirmation packet to accept upload
+        packet_type, _, data = client.receive_packet()
 
-    if packet_type == PacketType.INVALID.value and data != "FILENAME_EXISTS":
-        raise Exception(data)
-    elif packet_type == PacketType.INVALID.value and data == "FILENAME_EXISTS":
-        new_name = rename_file(file_name)
-        upload_file_handler(client, file_to_upload, str(Path(destination_path).with_name(new_name)), progress_bar, upload_status)
-        return
-    
+        if packet_type == PacketType.INVALID.value and data != "FILENAME_EXISTS":
+            raise Exception(data)
+        elif packet_type == PacketType.INVALID.value and data == "FILENAME_EXISTS":
+            new_name = rename_file(file_name)
+            logger.info(f'SOMETHING IS WRONG')
+            destination_path = Path(destination_path).with_name(new_name)
+            destination_path = str(destination_path)
+        # packet type is valid, so we can break
+        else:
+            break
+        
     total_bytes_sent = 0
 
     # begin sending file (plenty of consent)
@@ -119,10 +125,18 @@ def upload_file(client, file_to_upload, destination_path, progress_bar, upload_s
     upload_thread.start()
     schedule_upload_status_check(client, upload_thread, file_name, progress_bar, upload_status, root)
 
+    # update the ui while the thread is running
+    while upload_thread.is_alive():
+        root.update()
+
 
 def rename_file(old_filename):
-    input_box = simpledialog.askstring("File Already Exists", "Please enter a different file name")
+    newWindow = tk.Tk()
+    newWindow.withdraw()
 
+    input_box = simpledialog.askstring("File Already Exists", "Please enter a different file name", parent=newWindow)
+
+    newWindow.destroy()
 
     return input_box + Path(old_filename).suffix
     

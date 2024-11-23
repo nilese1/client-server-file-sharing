@@ -37,7 +37,16 @@ def get_filetree(client):
         raise Exception(data)
 
     return data['data']
-    
+
+def get_filesize_string(file_size: int, index=0):
+    # are we ever going to need more than GB? No. Are we going to add it anyways? Yes.
+    file_size_units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+
+    if file_size < 1024:
+        return f'{file_size}{file_size_units[index]}'
+    else:
+        return get_filesize_string(int(file_size / 1024), index + 1)
+
 
 '''
 Displays the file structure in a treeview given a dict (and parent if filetree is a subtree)
@@ -50,7 +59,7 @@ def load_filetree(treeview, filetree: dict, parent=None):
             item = treeview.insert(parent, 'end', text=key)
             load_filetree(treeview, value, item)
         else:
-            treeview.insert(parent, 'end', text=key)
+            treeview.insert(parent, 'end', text=key, values=(get_filesize_string(value)))
 
 '''
 Waits for a confirmation packet from the server, going to be our main way of
@@ -158,5 +167,9 @@ def download_file(client, path, save_path, progress_bar, download_status, root: 
     download_thread = threading.Thread(target=download_file_handler, args=(client, path, save_path, progress_bar, download_status))
     download_thread.start()
     check_download_status(client, download_thread, file_name, progress_bar, download_status, root)
+
+    # update the ui while the thread is running
+    while download_thread.is_alive():
+        root.update()
 
 
