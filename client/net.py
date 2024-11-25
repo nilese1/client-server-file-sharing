@@ -95,7 +95,7 @@ class Client(Thread):
                 logger.info(f'cur_key Type: {type(cur_key)}, cur_key: {cur_key}')
                 if cur_key is NoneType:
                     logger.info(f'Failed to create key')
-                self.public_key_server = cur_key
+                return cur_key
             else:
                 logger.error(f'Received packet type {packet_type}')
                 raise Exception

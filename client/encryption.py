@@ -19,7 +19,8 @@ def generate_keys():
     return private_key, public_key, public_key.public_numbers()
 
 def encrypt_data(plaintext, public_key_server):
-    print("Encrypting data...")
+    print(f"public_key_server Type: {type(public_key_server)}")
+
     ciphertext = public_key_server.encrypt(
         plaintext,
         padding.OAEP(
