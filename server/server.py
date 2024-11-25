@@ -216,9 +216,11 @@ class ClientHandler(Thread):
         while len(packet_bytes) < packet_size:
             packet_bytes += self.client_socket.recv(packet_size - len(packet_bytes))
 
-        packet_data = self.decode_data(packet_bytes)
+        #packet_data = self.decode_data(packet_bytes)
 
         # Decode the payload and load it as JSON
+        if self.client_public_key is not None:
+            packet_bytes = generateKeys.decrypt_data(packet_bytes, self.server.server_private_key)
         packet_data_str = packet_bytes.decode("utf-8")
         packet_data = json.loads(packet_data_str)  # Ensure packet_data is a dictionary
 
@@ -296,7 +298,7 @@ class ClientHandler(Thread):
             case PacketType.DISCONNECT.value:
                 self.handle_disconnect_packet(packet_size, packet_data)
             case PacketType.KEY.value:
-                self.handle_key_packet(packet_data)
+                self.client_public_key = self.handle_key_packet(packet_data)
             case _:
                 self.handle_invalid_packet(packet_size, packet_data)
 
@@ -325,7 +327,7 @@ class ClientHandler(Thread):
             modulus = int.from_bytes(base64.b64decode(key_data['modulus']), byteorder='big')
             exp = int.from_bytes(base64.b64decode(key_data['exp']), byteorder='big')
             new_key_nums = rsa.RSAPublicNumbers(exp, modulus)
-            self.client_public_key = new_key_nums.public_key()
+            cur_key = new_key_nums.public_key()
 
             server_public_nums = self.server.server_public_key_nums
             modulus = server_public_nums.n
@@ -338,6 +340,7 @@ class ClientHandler(Thread):
             data = {"modulus": modulus, "exp": exp}
             self.send_packet_clear(PacketType.KEY, data)
             logger.info(f'Sent public key to client')
+            return cur_key
         except Exception as e:
             logger.error(f'Failed to receive key from client: {e}')
 

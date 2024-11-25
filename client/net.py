@@ -52,7 +52,7 @@ class Client(Thread):
         self.server_port = server_port
 
         self.private_key_client, self.public_key_client, self.public_key_client_numbers  = encryption.generate_keys()
-        self.public_key_server = self.public_key_client
+        self.public_key_server = None
 
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # required to exit gracefully
@@ -135,12 +135,14 @@ class Client(Thread):
     def create_packet(self, packet_type, data):
         # packet structure: [id, packet_type, data]
         data_bytes = self.encode_data(data)
+        if self.public_key_server is not None:
+            data_bytes = encryption.encrypt_data(data_bytes, self.public_key_client)
         header = struct.pack('!BI', packet_type.value, len(data_bytes))
 
         return header + data_bytes
     
     def send_packet(self, packet_type, data):
-        data = encryption.encrypt_data(data, self.public_key_server)
+        #data = encryption.encrypt_data(data, self.public_key_server)
         packet = self.create_packet(packet_type, data)
         self.client_socket.send(packet)
 
