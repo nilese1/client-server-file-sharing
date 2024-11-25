@@ -52,12 +52,8 @@ class Client(Thread):
         self._stop = threading.Event()
 
     def connect(self):
-        try:
-            self.client_socket.connect((self.server_ip, self.server_port))
-            logger.info(f'Connected to server at {self.server_ip}:{self.server_port}')
-        except Exception as e:
-            logger.error(f'Failed to connect to server: {e}')
-
+        self.client_socket.connect((self.server_ip, self.server_port))
+        logger.info(f'Connected to server at {self.server_ip}:{self.server_port}')
     # TODO: implement authentication
     def authenticate(self, username, password):
         # plaintext password is bad, but we'll fix it later
