@@ -19,6 +19,7 @@ import hashlib
 import json
 import struct
 import base64
+import encryption
 
 
 # get from prompting the user later
@@ -181,6 +182,10 @@ class FileSharingApp(FileSharingAppUI):
             self.client = Client(SERVER_IP, SERVER_PORT)
 
             self.client.connect()
+
+            self.client.send_key()
+            self.client.public_key_server = self.client.get_key()
+
             # Show connection status to ui
             self.connection_status.set(f'Waiting for authentication from {self.client.server_ip}')
 

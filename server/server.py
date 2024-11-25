@@ -14,6 +14,8 @@ import hashlib
 import os
 import ssl
 from metrics import Metrics
+import generateKeys
+import cryptography.hazmat.primitives.asymmetric.rsa as rsa
 
 # Load or define users and password hashes
 user_db = {
@@ -28,6 +30,7 @@ class PacketType(Enum):
     REQUEST = 3
     DISCONNECT = 4
     INVALID = 5
+    KEY = 6
 
 
 # put in config file later
@@ -76,12 +79,14 @@ class Server:
         # only client handlers go in here
         self.connected_clients = []
 
+        self.server_private_key, self.server_public_key, self.server_public_key_nums = generateKeys.generate_keys()
+
         # start server
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((HOST, PORT))
         self.server_socket.listen(MAX_CLIENTS)
         # so server isn't waiting for connection forever (necessary to exit gracefully)
-        self.server_socket.settimeout(0.1)
+        self.server_socket.settimeout(0.5)
 
     """
     Listens for connections from clients and establishes a new thread for each client,
@@ -149,6 +154,8 @@ class ClientHandler(Thread):
         self.client_ip = client_ip
         self.server = server
 
+        self.client_public_key = None
+
         # Magical flag to stop the thread as soon as it is set
         self._stop = threading.Event()
 
@@ -183,7 +190,41 @@ class ClientHandler(Thread):
     Receives a packet from a client and returns a decoded dict
     """
 
+    def send_packet_clear(self, packet_type, data):
+        try:
+            packet = self.create_packet(packet_type, data)
+            self.client_socket.send(packet)
+            logger.debug(f"Sent packet of type {packet_type} to {self.client_ip}")
+        except Exception as e:
+            logger.error(f"Unable to send packet: {e}")
+
+    """
+    Receives a packet from a client and returns a decoded dict
+    """
+
     def receive_packet(self):
+        # Read packet header
+        packet_header = self.client_socket.recv(5)
+        if len(packet_header) < 5:
+            return None
+
+        # make packet readable
+        packet_type, packet_size = struct.unpack("!BI", packet_header)
+        packet_bytes = self.client_socket.recv(packet_size)
+
+        # in case the packet is split into multiple packets
+        while len(packet_bytes) < packet_size:
+            packet_bytes += self.client_socket.recv(packet_size - len(packet_bytes))
+
+        packet_data = self.decode_data(packet_bytes)
+
+        # Decode the payload and load it as JSON
+        packet_data_str = packet_bytes.decode("utf-8")
+        packet_data = json.loads(packet_data_str)  # Ensure packet_data is a dictionary
+
+        return packet_type, packet_size, packet_data
+
+    def receive_packet_clear(self):
         # Read packet header
         packet_header = self.client_socket.recv(5)
         if len(packet_header) < 5:
@@ -239,7 +280,8 @@ class ClientHandler(Thread):
             self.close()
 
     def handle_packet(self, packet_type, packet_size, packet_data):
-        if not self.authenticated and (packet_type != PacketType.LOGIN.value and packet_type != PacketType.DISCONNECT.value):
+        if not self.authenticated and (packet_type != PacketType.LOGIN.value and packet_type != PacketType.DISCONNECT.value
+            and packet_type != PacketType.KEY.value):
             logger.error(f'Client {self.client_ip} is not authenticated, skipping packet')
             self.send_packet(PacketType.INVALID, 'Client is not authenticated')
             return
@@ -253,6 +295,8 @@ class ClientHandler(Thread):
                 self.handle_request_packet(packet_size, packet_data)
             case PacketType.DISCONNECT.value:
                 self.handle_disconnect_packet(packet_size, packet_data)
+            case PacketType.KEY.value:
+                self.handle_key_packet(packet_data)
             case _:
                 self.handle_invalid_packet(packet_size, packet_data)
 
@@ -271,6 +315,31 @@ class ClientHandler(Thread):
         else:
             self.send_packet(PacketType.INVALID, "Invalid credentials")
             logger.info(f"Client {self.client_ip} failed authentication.")
+
+    def handle_key_packet(self, data):
+        try:
+
+
+            logger.info(f'Received key from server')
+            key_data = data #self.decode_data(data)
+            modulus = int.from_bytes(base64.b64decode(key_data['modulus']), byteorder='big')
+            exp = int.from_bytes(base64.b64decode(key_data['exp']), byteorder='big')
+            new_key_nums = rsa.RSAPublicNumbers(exp, modulus)
+            self.client_public_key = new_key_nums.public_key()
+
+            server_public_nums = self.server.server_public_key_nums
+            modulus = server_public_nums.n
+            exp = server_public_nums.e
+            logger.info(f'Checkpoint 1')
+            modulus = base64.b64encode(modulus.to_bytes((modulus.bit_length() + 7) // 8, byteorder='big')).decode(
+                "utf-8")
+            exp = base64.b64encode(exp.to_bytes((exp.bit_length() + 7) // 8, byteorder='big')).decode("utf-8")
+
+            data = {"modulus": modulus, "exp": exp}
+            self.send_packet_clear(PacketType.KEY, data)
+            logger.info(f'Sent public key to client')
+        except Exception as e:
+            logger.error(f'Failed to receive key from client: {e}')
 
     def handle_send_packet(self, size, data):
         # put a match statement here so we can handle different types of sends (even though we never will)

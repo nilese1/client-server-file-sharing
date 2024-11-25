@@ -9,6 +9,12 @@ import datetime
 import json
 import base64
 import hashlib
+from types import NoneType
+
+from cryptography.hazmat.primitives import serialization
+
+import encryption
+import cryptography.hazmat.primitives.asymmetric.rsa as rsa
 
 class PacketType(Enum):
     LOGIN = 1
@@ -16,6 +22,7 @@ class PacketType(Enum):
     REQUEST = 3
     DISCONNECT = 4
     INVALID = 5 # used for errors, changed from -1 to 5 because apparently struct only accepts unsigned ints
+    KEY = 6
 
 
 LOG_LEVEL = logging.DEBUG
@@ -44,6 +51,9 @@ class Client(Thread):
         self.server_ip = server_ip
         self.server_port = server_port
 
+        self.private_key_client, self.public_key_client, self.public_key_client_numbers  = encryption.generate_keys()
+        self.public_key_server = self.public_key_client
+
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # required to exit gracefully
         self.client_socket.settimeout(2.0)
@@ -57,6 +67,41 @@ class Client(Thread):
             logger.info(f'Connected to server at {self.server_ip}:{self.server_port}')
         except Exception as e:
             logger.error(f'Failed to connect to server: {e}')
+
+    def send_key(self):
+        try:
+            exp = self.public_key_client_numbers.e
+            modulus = self.public_key_client_numbers.n
+
+            modulus = base64.b64encode(modulus.to_bytes((modulus.bit_length() + 7) // 8, byteorder='big')).decode("utf-8")
+            exp = base64.b64encode(exp.to_bytes((exp.bit_length() + 7) // 8, byteorder='big')).decode("utf-8")
+
+            data = {"modulus": modulus, "exp": exp}
+            self.send_packet_clear(PacketType.KEY, data)
+            logger.info(f'Sent public key to server')
+        except Exception as e:
+            logger.error(f'Failed to send public key to server: {e}')
+
+    def get_key(self):
+        try:
+            packet_type, packet_size, packet_data = self.receive_packet_clear()
+            if packet_type == PacketType.KEY.value:
+                logger.info(f'Received key from server')
+                key_data = packet_data
+                modulus = int.from_bytes(base64.b64decode(key_data['modulus']), byteorder='big')
+                exp = int.from_bytes(base64.b64decode(key_data['exp']), byteorder='big')
+                new_key_nums = rsa.RSAPublicNumbers(exp, modulus)
+                cur_key = new_key_nums.public_key()
+                logger.info(f'cur_key Type: {type(cur_key)}, cur_key: {cur_key}')
+                if cur_key is NoneType:
+                    logger.info(f'Failed to create key')
+                self.public_key_server = cur_key
+            else:
+                logger.error(f'Received packet type {packet_type}')
+                raise Exception
+        except Exception as e:
+            logger.error(f'Failed to receive key from server: {e}')
+
 
     # TODO: implement authentication
     def authenticate(self, username, password):
@@ -79,6 +124,7 @@ class Client(Thread):
 
         self.stop()
         self.close()
+
      
     def encode_data(self, data):
         return json.dumps(data).encode('utf-8')
@@ -94,10 +140,39 @@ class Client(Thread):
         return header + data_bytes
     
     def send_packet(self, packet_type, data):
+        data = encryption.encrypt_data(data, self.public_key_server)
+        packet = self.create_packet(packet_type, data)
+        self.client_socket.send(packet)
+
+    def send_packet_clear(self, packet_type, data):
         packet = self.create_packet(packet_type, data)
         self.client_socket.send(packet)
 
     def receive_packet(self):
+        # Read packet header
+        packet_header = self.client_socket.recv(5)
+        if len(packet_header) < 5:
+            return None
+
+        logger.debug(f'packet header {packet_header}')
+
+        # make packet readable
+        packet_type, packet_size = struct.unpack('!BI', packet_header)
+
+        packet_bytes = self.client_socket.recv(packet_size)
+
+        # in case the packet is split into multiple packets
+        while len(packet_bytes) < packet_size:
+            packet_bytes += self.client_socket.recv(packet_size - len(packet_bytes))
+        plaintext_bytes = encryption.decrypt_data(packet_bytes, self.private_key_client)
+        packet_data = self.decode_data(plaintext_bytes)
+
+        logger.info(f'packet received of type {PacketType(packet_type).name} and size {packet_size}')
+        logger.debug(f'Packet info: {packet_data}')
+
+        return packet_type, packet_size, packet_data
+
+    def receive_packet_clear(self):
         # Read packet header
         packet_header = self.client_socket.recv(5)
         if len(packet_header) < 5:
