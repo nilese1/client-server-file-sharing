@@ -1,5 +1,9 @@
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding as symPadding
+from cryptography.hazmat.backends import default_backend
+import os
 
 
 def generate_keys():
@@ -14,7 +18,14 @@ def generate_keys():
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
+
     return private_key, public_key, public_key.public_numbers()
+
+def generate_symmetric_key():
+    rand = os.urandom(32)
+    init_vector = os.urandom(16)
+    symmetric = Cipher(algorithms.AES(rand), modes.CBC(init_vector), backend=default_backend())
+    return rand, init_vector, symmetric
 
 def encrypt_data(plaintext, public_key_server):
     ciphertext = public_key_server.encrypt(
@@ -27,8 +38,8 @@ def encrypt_data(plaintext, public_key_server):
     )
     return ciphertext
 
-def decrypt_data(ciphertext, private_key_client):
-    plaintext = private_key_client.decrypt(
+def decrypt_data(ciphertext, private_key_server):
+    plaintext = private_key_server.decrypt(
         ciphertext,
         padding.OAEP(
             mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -37,6 +48,33 @@ def decrypt_data(ciphertext, private_key_client):
         )
     )
     return plaintext
+
+def symmetric_encrypt(plaintext, symmetric_key):
+    encryptor = symmetric_key.encryptor()
+    padder = symPadding.PKCS7(128).padder()
+    padded_data = padder.update(plaintext) + padder.finalize()
+    ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+    return ciphertext
+
+def symmetric_decrypt(ciphertext, symmetric_key):
+    decryptor = symmetric_key.decryptor()
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+    unpadder = symPadding.PKCS7(128).unpadder()
+    unpadded_data = unpadder.update(plaintext) + unpadder.finalize()
+    return unpadded_data
+
+
+
+# AES_KEY = generate_symmetric_key()
+#
+# message = b"Hello World!"
+#
+# cipher = symmetric_encrypt(message, AES_KEY)
+#
+# print(cipher)
+#
+# plain = symmetric_decrypt(cipher, AES_KEY)
+# print(plain)
 
 
 

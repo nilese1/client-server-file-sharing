@@ -1,12 +1,16 @@
 import socket
 import struct
 import threading
+from sys import byteorder
 from threading import Thread
 from enum import Enum
 import logging
 from pathlib import Path
 import datetime
 import json
+
+from cryptography.hazmat.primitives import serialization
+
 import handleFolders
 import handleFiles
 import base64
@@ -155,6 +159,8 @@ class ClientHandler(Thread):
         self.server = server
 
         self.client_public_key = None
+        self.key, self.init_vector, self.aes_key = generateKeys.generate_symmetric_key()
+        self.is_symmetric_sent = False
 
         # Magical flag to stop the thread as soon as it is set
         self._stop = threading.Event()
@@ -174,6 +180,10 @@ class ClientHandler(Thread):
     def create_packet(self, packet_type, data):
         # packet structure: [id, packet_type, data]
         data_bytes = self.encode_data(data)
+        if  self.client_public_key is not None and self.is_symmetric_sent is False:
+            data_bytes = generateKeys.encrypt_data(data_bytes, self.client_public_key)
+        elif self.client_public_key is not None:
+            data_bytes = generateKeys.symmetric_encrypt(data_bytes, self.aes_key)
         header = struct.pack("!BI", packet_type.value, len(data_bytes))
 
         return header + data_bytes
@@ -181,6 +191,7 @@ class ClientHandler(Thread):
     def send_packet(self, packet_type, data):
         try:
             packet = self.create_packet(packet_type, data)
+            #logger.debug(f'Packet: {packet}')
             self.client_socket.send(packet)
             logger.debug(f"Sent packet of type {packet_type} to {self.client_ip}")
         except Exception as e:
@@ -190,17 +201,7 @@ class ClientHandler(Thread):
     Receives a packet from a client and returns a decoded dict
     """
 
-    def send_packet_clear(self, packet_type, data):
-        try:
-            packet = self.create_packet(packet_type, data)
-            self.client_socket.send(packet)
-            logger.debug(f"Sent packet of type {packet_type} to {self.client_ip}")
-        except Exception as e:
-            logger.error(f"Unable to send packet: {e}")
 
-    """
-    Receives a packet from a client and returns a decoded dict
-    """
 
     def receive_packet(self):
         # Read packet header
@@ -217,36 +218,16 @@ class ClientHandler(Thread):
             packet_bytes += self.client_socket.recv(packet_size - len(packet_bytes))
 
         #packet_data = self.decode_data(packet_bytes)
-
+        #logger.debug(f'Packet Received: {packet_bytes}: ')
         # Decode the payload and load it as JSON
         if self.client_public_key is not None:
-            packet_bytes = generateKeys.decrypt_data(packet_bytes, self.server.server_private_key)
+            packet_bytes = generateKeys.symmetric_decrypt(packet_bytes, self.aes_key)
         packet_data_str = packet_bytes.decode("utf-8")
         packet_data = json.loads(packet_data_str)  # Ensure packet_data is a dictionary
 
         return packet_type, packet_size, packet_data
 
-    def receive_packet_clear(self):
-        # Read packet header
-        packet_header = self.client_socket.recv(5)
-        if len(packet_header) < 5:
-            return None
 
-        # make packet readable
-        packet_type, packet_size = struct.unpack("!BI", packet_header)
-        packet_bytes = self.client_socket.recv(packet_size)
-
-        # in case the packet is split into multiple packets
-        while len(packet_bytes) < packet_size:
-            packet_bytes += self.client_socket.recv(packet_size - len(packet_bytes))
-
-        packet_data = self.decode_data(packet_bytes)
-
-        # Decode the payload and load it as JSON
-        packet_data_str = packet_bytes.decode("utf-8")
-        packet_data = json.loads(packet_data_str)  # Ensure packet_data is a dictionary
-
-        return packet_type, packet_size, packet_data
 
     def wait_for_packet(self):
         # Unpack the packet directly and only proceed if we get a valid packet
@@ -299,6 +280,14 @@ class ClientHandler(Thread):
                 self.handle_disconnect_packet(packet_size, packet_data)
             case PacketType.KEY.value:
                 self.client_public_key = self.handle_key_packet(packet_data)
+                keyval = self.key
+                init_vec = self.init_vector
+                keyval = base64.b64encode(keyval).decode("utf-8")
+                init_vec = base64.b64encode(init_vec).decode("utf-8")
+                aes_val = {'key': keyval, 'init_vector': init_vec}
+                self.send_packet(PacketType.KEY, aes_val )
+                logger.info(f'Sent symmetric key to client')
+                self.is_symmetric_sent = True
             case _:
                 self.handle_invalid_packet(packet_size, packet_data)
 
@@ -321,26 +310,14 @@ class ClientHandler(Thread):
     def handle_key_packet(self, data):
         try:
 
-
-            logger.info(f'Received key from server')
-            key_data = data #self.decode_data(data)
+            key_data = data  # self.decode_data(data)
             modulus = int.from_bytes(base64.b64decode(key_data['modulus']), byteorder='big')
             exp = int.from_bytes(base64.b64decode(key_data['exp']), byteorder='big')
             new_key_nums = rsa.RSAPublicNumbers(exp, modulus)
             cur_key = new_key_nums.public_key()
-
-            server_public_nums = self.server.server_public_key_nums
-            modulus = server_public_nums.n
-            exp = server_public_nums.e
-            logger.info(f'Checkpoint 1')
-            modulus = base64.b64encode(modulus.to_bytes((modulus.bit_length() + 7) // 8, byteorder='big')).decode(
-                "utf-8")
-            exp = base64.b64encode(exp.to_bytes((exp.bit_length() + 7) // 8, byteorder='big')).decode("utf-8")
-
-            data = {"modulus": modulus, "exp": exp}
-            self.send_packet_clear(PacketType.KEY, data)
-            logger.info(f'Sent public key to client')
+            logger.info(f'Received key from client')
             return cur_key
+
         except Exception as e:
             logger.error(f'Failed to receive key from client: {e}')
 

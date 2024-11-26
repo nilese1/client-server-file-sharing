@@ -52,7 +52,7 @@ class Client(Thread):
         self.server_port = server_port
 
         self.private_key_client, self.public_key_client, self.public_key_client_numbers  = encryption.generate_keys()
-        self.public_key_server = None
+        self.AES_KEY = None
 
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # required to exit gracefully
@@ -77,28 +77,19 @@ class Client(Thread):
             exp = base64.b64encode(exp.to_bytes((exp.bit_length() + 7) // 8, byteorder='big')).decode("utf-8")
 
             data = {"modulus": modulus, "exp": exp}
-            self.send_packet_clear(PacketType.KEY, data)
+            self.send_packet(PacketType.KEY, data)
             logger.info(f'Sent public key to server')
         except Exception as e:
             logger.error(f'Failed to send public key to server: {e}')
 
     def get_key(self):
         try:
-            packet_type, packet_size, packet_data = self.receive_packet_clear()
-            if packet_type == PacketType.KEY.value:
-                logger.info(f'Received key from server')
-                key_data = packet_data
-                modulus = int.from_bytes(base64.b64decode(key_data['modulus']), byteorder='big')
-                exp = int.from_bytes(base64.b64decode(key_data['exp']), byteorder='big')
-                new_key_nums = rsa.RSAPublicNumbers(exp, modulus)
-                cur_key = new_key_nums.public_key()
-                logger.info(f'cur_key Type: {type(cur_key)}, cur_key: {cur_key}')
-                if cur_key is NoneType:
-                    logger.info(f'Failed to create key')
-                return cur_key
-            else:
-                logger.error(f'Received packet type {packet_type}')
-                raise Exception
+            packet_type, packet_size, packet_data = self.receive_packet()
+            key = base64.b64decode(packet_data['key'].encode('utf-8'))
+            init_vector = base64.b64decode(packet_data['init_vector'].encode('utf-8'))
+            self.AES_KEY = encryption.generate_symmetric_key(key, init_vector)
+            logger.info(f'Received key from server')
+
         except Exception as e:
             logger.error(f'Failed to receive key from server: {e}')
 
@@ -135,8 +126,8 @@ class Client(Thread):
     def create_packet(self, packet_type, data):
         # packet structure: [id, packet_type, data]
         data_bytes = self.encode_data(data)
-        if self.public_key_server is not None:
-            data_bytes = encryption.encrypt_data(data_bytes, self.public_key_client)
+        if self.AES_KEY is not None:
+            data_bytes = encryption.symmetric_encrypt(data_bytes, self.AES_KEY)
         header = struct.pack('!BI', packet_type.value, len(data_bytes))
 
         return header + data_bytes
@@ -144,11 +135,9 @@ class Client(Thread):
     def send_packet(self, packet_type, data):
         #data = encryption.encrypt_data(data, self.public_key_server)
         packet = self.create_packet(packet_type, data)
+        #logger.debug(f'Packet: {packet}')
         self.client_socket.send(packet)
 
-    def send_packet_clear(self, packet_type, data):
-        packet = self.create_packet(packet_type, data)
-        self.client_socket.send(packet)
 
     def receive_packet(self):
         # Read packet header
@@ -166,30 +155,12 @@ class Client(Thread):
         # in case the packet is split into multiple packets
         while len(packet_bytes) < packet_size:
             packet_bytes += self.client_socket.recv(packet_size - len(packet_bytes))
-        plaintext_bytes = encryption.decrypt_data(packet_bytes, self.private_key_client)
-        packet_data = self.decode_data(plaintext_bytes)
+        #logger.debug(f'Packet Rec: {packet_bytes}')
+        if self.AES_KEY is not None:
+            packet_bytes = encryption.symmetric_decrypt(packet_bytes, self.AES_KEY)
+        elif self.AES_KEY is None and packet_type == PacketType.KEY.value:
+            packet_bytes = encryption.decrypt_data(packet_bytes, self.private_key_client)
 
-        logger.info(f'packet received of type {PacketType(packet_type).name} and size {packet_size}')
-        logger.debug(f'Packet info: {packet_data}')
-
-        return packet_type, packet_size, packet_data
-
-    def receive_packet_clear(self):
-        # Read packet header
-        packet_header = self.client_socket.recv(5)
-        if len(packet_header) < 5:
-            return None
-
-        logger.debug(f'packet header {packet_header}')
-
-        # make packet readable
-        packet_type, packet_size = struct.unpack('!BI', packet_header)
-
-        packet_bytes = self.client_socket.recv(packet_size)
-
-        # in case the packet is split into multiple packets
-        while len(packet_bytes) < packet_size:
-            packet_bytes += self.client_socket.recv(packet_size - len(packet_bytes))
 
         packet_data = self.decode_data(packet_bytes)
 
@@ -197,6 +168,7 @@ class Client(Thread):
         logger.debug(f'Packet info: {packet_data}')
 
         return packet_type, packet_size, packet_data
+
 
     def wait_for_packet(self):
         packet_type, packet_size, packet_data = self.receive_packet()

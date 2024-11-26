@@ -184,7 +184,11 @@ class FileSharingApp(FileSharingAppUI):
             self.client.connect()
 
             self.client.send_key()
-            self.client.public_key_server = self.client.get_key()
+            #key_size, init_vector =
+            self.client.get_key()
+            #self.client.AES_KEY = encryption.generate_symmetric_key(key_size, init_vector)
+
+
 
             # Show connection status to ui
             self.connection_status.set(f'Waiting for authentication from {self.client.server_ip}')
