@@ -19,6 +19,7 @@ import hashlib
 import json
 import struct
 import base64
+import threading
 import encryption
 
 
@@ -36,6 +37,7 @@ class FileSharingApp(FileSharingAppUI):
         self.treeview = self.builder.get_object('tv_filetree')
         self.client = None
         self.treeview.bind('<Button-3>', self.deselect_item_on_right_click)
+        threading.excepthook = self.handle_error
 
     def deselect_item_on_right_click(self, event):
         for item in self.treeview.selection():

@@ -116,12 +116,10 @@ def check_download_status(client, t: Thread, file_name, progress_bar, download_s
     if not t.is_alive():
         download_status.set(f'Finished downloading {file_name}')
         progress_bar.set(200)
-        logger.info(f'WE ARE DONE')
     else:
         progress_bar.set(total_bytes_received/total_file_size * 100 * 2)
         download_status.set(f'Downloading {file_name}... {round(total_bytes_received / total_file_size * 100, 2)}%')
         schedule_download_status_check(client, t, file_name, progress_bar, download_status, root)
-        logger.info(f'HIHIHIHHIHI')
 
 def download_file_handler(client, path, save_path, progress_bar, download_status):
     logger.debug(f'Requesting to download file {path}')
@@ -163,9 +161,10 @@ def download_file(client, path, save_path, progress_bar, download_status, root: 
 
     progress_bar.set(0)
     download_status.set(f'Downloading... 0%')
-
+    
     download_thread = threading.Thread(target=download_file_handler, args=(client, path, save_path, progress_bar, download_status))
     download_thread.start()
+
     check_download_status(client, download_thread, file_name, progress_bar, download_status, root)
 
     # update the ui while the thread is running
