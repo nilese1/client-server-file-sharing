@@ -8,9 +8,8 @@ import logging
 from pathlib import Path
 import datetime
 import json
-
+import configparser
 from cryptography.hazmat.primitives import serialization
-
 import handleFolders
 import handleFiles
 import base64
@@ -37,10 +36,13 @@ class PacketType(Enum):
     KEY = 6
 
 
-# put in config file later
-ROOT_PATH = "server_root"
+config = configparser.ConfigParser()
+config.read('config.ini')
 
-LOG_LEVEL = logging.DEBUG
+# put in config file later
+ROOT_PATH = config['server']['root_path']
+
+LOG_LEVEL = config['server']['log_level']
 logging.basicConfig(
     filename=Path(
         f'logs/log_{datetime.datetime.now().strftime("%m-%d-%Y_%H-%M-%S")}.log'
@@ -61,12 +63,11 @@ console_handler.setFormatter(
 logger.addHandler(console_handler)
 
 
-BUFFER_SIZE = 4096
-MAX_CLIENTS = 10
-# read from config file later
-HOST = "127.0.0.1"
-PORT = 30000
 
+BUFFER_SIZE = int(config['server']['buffer_size'])
+MAX_CLIENTS = int(config['server']['max_clients'])
+HOST = config['server']['host']
+PORT = int(config['server']['port'])
 # So multiple clients can download the same file at the same time
 # or download a file currently being uploaded
 lock = threading.Lock()

@@ -6,7 +6,7 @@ from tkinter import filedialog
 from tkinter import messagebox
 import pygubu
 from ui.loginui import LoginDialog
-
+from ui.connectionui import ServerInputDialog   
 from ui.srcui import FileSharingAppUI
 from enum import Enum
 from net import Client
@@ -21,11 +21,6 @@ import struct
 import base64
 import threading
 import encryption
-
-
-# get from prompting the user later
-SERVER_IP = '127.0.0.1'
-SERVER_PORT = 30000
 
 
 class FileSharingApp(FileSharingAppUI):
@@ -181,7 +176,8 @@ class FileSharingApp(FileSharingAppUI):
             return
 
         try:
-            self.client = Client(SERVER_IP, SERVER_PORT)
+            server_ip, server_port = ServerInputDialog.get_server_input(self.mainwindow)
+            self.client = Client(server_ip, server_port)
 
             self.client.connect()
 
